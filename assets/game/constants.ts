@@ -94,3 +94,38 @@ export enum Classes {
   Enchanter,
   Beastlord,
 }
+
+export enum EquipmentSlot {
+  MainHand,
+  OffHand,
+  Ranged,
+  Ammo,
+  Head,
+  Arms,
+  Wrist,
+  Hand,
+  Chest,
+  Waist,
+  Leg,
+  Boot,
+  Ring,
+  Ear,
+  Total,
+}
+
+export function getItemsAllowed(slot: EquipmentSlot): number {
+  switch (slot) {
+    case EquipmentSlot.Wrist:
+    case EquipmentSlot.Ring:
+    case EquipmentSlot.Ear:
+      return 2;
+  }
+  return 1;
+}
+
+export enum ItemType {
+  Generic,
+  Weapon,
+  Armor,
+  Consumable,
+}

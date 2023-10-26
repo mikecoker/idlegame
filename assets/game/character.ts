@@ -1,28 +1,51 @@
-export class StatBlock {
-  public strength: number; // small atk, avg hit, skillups
-  public agility: number; // avoidance, skillups
-  public dexterity: number; // crits, skillups
-  public stamina: number; // hps
-  public intelligence: number; // mana pool int casters, fizzle chance
-  public wisdom: number; // mana pool wis casters, fizzle
-  public charisma: number; // merchant prices, charms, enc/bard skills
+import { getItemsAllowed } from "./constants";
+import { EquipmentItem } from "./item";
+import { DerivedStats, DerivedStatsBlock, StatBlock } from "./stat";
+
+export class CharacterData {
+  public baseStats: StatBlock;
+  public derivedStats: DerivedStatsBlock;
 }
 
 export class Character {
   protected _level: number;
   protected _experience: number;
 
-  protected _baseStats: StatBlock;
-  protected _derivedStats: DerivedStats;
+  protected _charData: CharacterData;
+
   protected _itemBonuses: StatBlock;
   protected _buffBonuses: StatBlock;
 
-  public health: number;
-  public mana: number;
+  protected _equipment: EquipmentItem[] = [];
+  protected _derivedStats: DerivedStats;
+
+  protected _curHealth: number = 0;
+  public get health(): number {
+    return this._curHealth;
+  }
+
+  protected _maxHealth: number = 1;
+  public get maxHealth(): number {
+    return this._maxHealth;
+  }
+
+  protected _curMana: number = 0;
+  public get mana(): number {
+    return this._curMana;
+  }
+
+  protected _maxMana: number = 1;
+  public get maxMana(): number {
+    return this._maxMana;
+  }
+
+  public get armor(): number {
+    return this._itemBonuses.armor + this._buffBonuses.armor;
+  }
 
   public get strength(): number {
     return (
-      this._baseStats.strength +
+      this._charData.baseStats.strength +
       this._itemBonuses.strength +
       this._buffBonuses.strength
     );
@@ -30,7 +53,7 @@ export class Character {
 
   public get agility(): number {
     return (
-      this._baseStats.agility +
+      this._charData.baseStats.agility +
       this._itemBonuses.agility +
       this._buffBonuses.agility
     );
@@ -38,7 +61,7 @@ export class Character {
 
   public get dexterity(): number {
     return (
-      this._baseStats.dexterity +
+      this._charData.baseStats.dexterity +
       this._itemBonuses.dexterity +
       this._buffBonuses.dexterity
     );
@@ -46,7 +69,7 @@ export class Character {
 
   public get stamina(): number {
     return (
-      this._baseStats.stamina +
+      this._charData.baseStats.stamina +
       this._itemBonuses.stamina +
       this._buffBonuses.stamina
     );
@@ -54,7 +77,7 @@ export class Character {
 
   public get wisdom(): number {
     return (
-      this._baseStats.wisdom +
+      this._charData.baseStats.wisdom +
       this._itemBonuses.wisdom +
       this._buffBonuses.wisdom
     );
@@ -62,7 +85,7 @@ export class Character {
 
   public get intelligence(): number {
     return (
-      this._baseStats.intelligence +
+      this._charData.baseStats.intelligence +
       this._itemBonuses.intelligence +
       this._buffBonuses.intelligence
     );
@@ -70,58 +93,96 @@ export class Character {
 
   public get charisma(): number {
     return (
-      this._baseStats.charisma +
+      this._charData.baseStats.charisma +
       this._itemBonuses.charisma +
       this._buffBonuses.charisma
     );
   }
 
-  constructor(basestats: StatBlock, derived: DerivedStats) {
+  public get attackPower(): number {
+    return this._derivedStats.attackPower;
+  }
+  public get defense(): number {
+    return this._derivedStats.defense;
+  }
+  public get accuracy(): number {
+    return this._derivedStats.accuracy;
+  }
+  public get evasion(): number {
+    return this._derivedStats.evasion;
+  }
+  public get critPercent(): number {
+    return this._derivedStats.critPercent;
+  }
+
+  constructor(charData: CharacterData) {
     this._level = 1;
     this._experience = 0;
-    this._baseStats = basestats;
-    this._derivedStats = derived;
+    this._charData = charData;
+    this._derivedStats = new DerivedStats();
+  }
+
+  // this is the stupid version
+  public equipItem(equipment: EquipmentItem): EquipmentItem {
+    const count = getItemsAllowed(equipment.slot);
+    if (count == 1) {
+      const exist = this._equipment.find((e) => e.slot == equipment.slot);
+      if (exist) {
+        this._equipment = this._equipment.filter((e) => e != exist);
+      }
+      this._equipment.push(equipment);
+      this.updateStats();
+      return exist;
+    }
+
+    // more than 1 to equip
+    const found = [];
+    this._equipment.forEach((v) => {
+      if (v.slot == equipment.slot) {
+        found.push(v);
+      }
+    });
+
+    // if we have an open slot, just equip and bail
+    if (found.length < count) {
+      this._equipment.push(equipment);
+      this.updateStats();
+      return null;
+    }
+
+    // else unequip the first thing found
+    this._equipment = this._equipment.filter((e) => e != found[0]);
+    this._equipment.push(equipment);
+    this.updateStats();
+    return found[0];
+  }
+
+  protected updateItemStats() {
+    this._itemBonuses.reset();
+    this._equipment.forEach((e) => {
+      this._itemBonuses.add(e.stats);
+    });
+  }
+
+  updateStats() {
+    this.updateItemStats();
+
+    this._derivedStats.accuracy = this._charData.derivedStats.getAccuracy(
+      this.strength
+    );
+    this._derivedStats.attackPower = this._charData.derivedStats.getAttack(
+      this.strength
+    );
+    this._derivedStats.evasion = this._charData.derivedStats.getEvasion(
+      this.agility
+    );
+    this._derivedStats.defense = this._charData.derivedStats.getDefense(
+      this.armor
+    );
+    this._derivedStats.critPercent = this._charData.derivedStats.getCritPercent(
+      this.dexterity
+    );
   }
 
   applyDamage(amount: number) {}
-}
-
-export class DerivedStats {
-  public baseHitpoints: number = 10;
-  public baseMana: number = 10;
-  public atkPerStrength: number = 2;
-  public hitPerStrength: number = 2;
-  public avoidPerAgility: number = 2;
-  public critPerDexterity: number = 2;
-  public hpPerStamina: number = 4;
-  public manaPerIntelligence: number = 4;
-  public manaPerWisdom: number = 4;
-}
-
-export class WeaponStatBlock {
-  public damage: number;
-  public delay: number;
-}
-
-export class ArmorStatBlock {
-  public armor: number;
-}
-
-export class Item {
-  public stats: StatBlock;
-  public stackSize: number = 0; // 0 non-stacking, 1+ stack limit
-}
-
-export class WeaponItem extends Item {
-  public weaponStats: WeaponStatBlock;
-}
-
-export class ArmorItem extends Item {
-  public armorStats: ArmorStatBlock;
-}
-
-export class ItemInstance {
-  public item: Item;
-  public type: number;
-  public count: number;
 }
