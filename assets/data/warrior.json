@@ -1,0 +1,23 @@
+{
+  "baseStats": {
+    "strength": 15,
+    "agility": 10,
+    "dexterity": 10,
+    "stamina": 15,
+    "intelligence": 0,
+    "wisdom": 0,
+    "charisma": 5,
+    "defense": 50
+  },
+  "derivedStats": {
+    "baseHitpoints": 40,
+    "baseMana": 0,
+    "attackPerStr": 3, 
+    "accPerStr": 2,
+    "evaPerAgi": 2,
+    "dexPerCrit": 1,
+    "acPerDef": 2,
+    "hpPerStamina": 4,
+    "manaPerIntOrWis": 0
+  }
+}

@@ -1,4 +1,4 @@
-export class StatBlock {
+export class StatBlockData {
   public strength: number; // small atk, avg hit, skillups
   public agility: number; // avoidance, skillups
   public dexterity: number; // crits, skillups
@@ -6,7 +6,25 @@ export class StatBlock {
   public intelligence: number; // mana pool int casters, fizzle chance
   public wisdom: number; // mana pool wis casters, fizzle
   public charisma: number; // merchant prices, charms, enc/bard skills
-  public armor: number;
+  public defense: number;
+}
+
+export class StatBlock extends StatBlockData {
+  constructor() {
+    super();
+    this.reset();
+  }
+
+  initialize(block: StatBlockData) {
+    this.strength = block.strength;
+    this.agility = block.agility;
+    this.dexterity = block.dexterity;
+    this.stamina = block.stamina;
+    this.intelligence = block.intelligence;
+    this.wisdom = block.wisdom;
+    this.charisma = block.charisma;
+    this.defense = block.defense;
+  }
 
   public reset() {
     this.strength =
@@ -16,13 +34,13 @@ export class StatBlock {
       this.intelligence =
       this.wisdom =
       this.charisma =
-      this.armor =
+      this.defense =
         0;
   }
 
   public add(e: StatBlock) {
     this.agility += e.agility;
-    this.armor += e.armor;
+    this.defense += e.defense;
     this.charisma += e.charisma;
     this.dexterity += e.dexterity;
     this.intelligence += e.intelligence;
@@ -33,7 +51,7 @@ export class StatBlock {
 
   public remove(e: StatBlock) {
     this.agility -= e.agility;
-    this.armor -= e.armor;
+    this.defense -= e.defense;
     this.charisma -= e.charisma;
     this.dexterity -= e.dexterity;
     this.intelligence -= e.intelligence;
@@ -45,7 +63,7 @@ export class StatBlock {
 
 export class DerivedStats {
   public attackPower = 10;
-  public defense = 10;
+  public armor = 10;
   public accuracy = 10;
   public evasion = 10;
   public critPercent = 0.1;
@@ -53,7 +71,7 @@ export class DerivedStats {
 
 const cMaxCrit = 75;
 
-export class DerivedStatsBlock {
+export class DerivedStatsBlockData {
   public baseHitpoints: number = 10;
   public baseMana: number = 10;
   public attackPerStr: number = 5;
@@ -63,6 +81,20 @@ export class DerivedStatsBlock {
   public acPerDef: number = 10;
   public hpPerStamina: number = 4;
   public manaPerIntOrWis: number = 4;
+}
+
+export class DerivedStatsBlock extends DerivedStatsBlockData {
+  initialize(block: DerivedStatsBlockData) {
+    this.baseHitpoints = block.baseHitpoints;
+    this.baseMana = block.baseMana;
+    this.attackPerStr = block.attackPerStr;
+    this.accPerStr = block.accPerStr;
+    this.evaPerAgi = block.evaPerAgi;
+    this.dexPerCrit = block.dexPerCrit;
+    this.acPerDef = block.acPerDef;
+    this.hpPerStamina = block.hpPerStamina;
+    this.manaPerIntOrWis = block.manaPerIntOrWis;
+  }
 
   public getHitpoints(sta: number): number {
     return this.baseHitpoints + Math.floor(sta * this.hpPerStamina);
@@ -84,20 +116,21 @@ export class DerivedStatsBlock {
     return Math.floor(agi * this.evaPerAgi);
   }
 
-  public getDefense(ac: number): number {
-    return Math.floor(ac / this.acPerDef);
+  public getArmor(def: number): number {
+    return Math.floor(def * this.acPerDef);
   }
 
   public getCritPercent(dex: number): number {
-    return Math.min(cMaxCrit, Math.floor(dex / this.dexPerCrit)) / 100.0;
+    return Math.min(cMaxCrit, Math.floor(dex * this.dexPerCrit)) / 100.0;
   }
 }
 
-export class WeaponStatBlock {
-  public damage: number;
+export class WeaponStatBlock extends StatBlock {
+  public minDamage: number;
+  public maxDamage: number;
   public delay: number;
 }
 
-export class ArmorStatBlock {
+export class ArmorStatBlock extends StatBlock {
   public armor: number;
 }

@@ -1,25 +1,33 @@
-import { getItemsAllowed } from "./constants";
+import { EquipmentSlot, getItemsAllowed } from "./constants";
 import { EquipmentItem } from "./item";
-import { DerivedStats, DerivedStatsBlock, StatBlock } from "./stat";
+import {
+  DerivedStats,
+  DerivedStatsBlock,
+  DerivedStatsBlockData,
+  StatBlock,
+  StatBlockData,
+  WeaponStatBlock,
+} from "./stat";
 
 export class CharacterData {
-  public baseStats: StatBlock;
-  public derivedStats: DerivedStatsBlock;
+  public baseStats: StatBlockData;
+  public derivedStats: DerivedStatsBlockData;
 }
 
 export class Character {
   protected _level: number;
   protected _experience: number;
 
-  protected _charData: CharacterData;
+  protected _baseStats: StatBlock;
+  protected _derivedStatsBlock: DerivedStatsBlock;
 
-  protected _itemBonuses: StatBlock;
-  protected _buffBonuses: StatBlock;
+  protected _itemBonuses: StatBlock = new StatBlock();
+  protected _buffBonuses: StatBlock = new StatBlock();
 
   protected _equipment: EquipmentItem[] = [];
   protected _derivedStats: DerivedStats;
 
-  protected _curHealth: number = 0;
+  protected _curHealth: number = 1;
   public get health(): number {
     return this._curHealth;
   }
@@ -29,7 +37,7 @@ export class Character {
     return this._maxHealth;
   }
 
-  protected _curMana: number = 0;
+  protected _curMana: number = 1;
   public get mana(): number {
     return this._curMana;
   }
@@ -39,13 +47,17 @@ export class Character {
     return this._maxMana;
   }
 
-  public get armor(): number {
-    return this._itemBonuses.armor + this._buffBonuses.armor;
+  public get defense(): number {
+    return (
+      this._baseStats.defense +
+      this._itemBonuses.defense +
+      this._buffBonuses.defense
+    );
   }
 
   public get strength(): number {
     return (
-      this._charData.baseStats.strength +
+      this._baseStats.strength +
       this._itemBonuses.strength +
       this._buffBonuses.strength
     );
@@ -53,7 +65,7 @@ export class Character {
 
   public get agility(): number {
     return (
-      this._charData.baseStats.agility +
+      this._baseStats.agility +
       this._itemBonuses.agility +
       this._buffBonuses.agility
     );
@@ -61,7 +73,7 @@ export class Character {
 
   public get dexterity(): number {
     return (
-      this._charData.baseStats.dexterity +
+      this._baseStats.dexterity +
       this._itemBonuses.dexterity +
       this._buffBonuses.dexterity
     );
@@ -69,7 +81,7 @@ export class Character {
 
   public get stamina(): number {
     return (
-      this._charData.baseStats.stamina +
+      this._baseStats.stamina +
       this._itemBonuses.stamina +
       this._buffBonuses.stamina
     );
@@ -77,7 +89,7 @@ export class Character {
 
   public get wisdom(): number {
     return (
-      this._charData.baseStats.wisdom +
+      this._baseStats.wisdom +
       this._itemBonuses.wisdom +
       this._buffBonuses.wisdom
     );
@@ -85,7 +97,7 @@ export class Character {
 
   public get intelligence(): number {
     return (
-      this._charData.baseStats.intelligence +
+      this._baseStats.intelligence +
       this._itemBonuses.intelligence +
       this._buffBonuses.intelligence
     );
@@ -93,7 +105,7 @@ export class Character {
 
   public get charisma(): number {
     return (
-      this._charData.baseStats.charisma +
+      this._baseStats.charisma +
       this._itemBonuses.charisma +
       this._buffBonuses.charisma
     );
@@ -102,8 +114,8 @@ export class Character {
   public get attackPower(): number {
     return this._derivedStats.attackPower;
   }
-  public get defense(): number {
-    return this._derivedStats.defense;
+  public get armor(): number {
+    return this._derivedStats.armor;
   }
   public get accuracy(): number {
     return this._derivedStats.accuracy;
@@ -118,8 +130,36 @@ export class Character {
   constructor(charData: CharacterData) {
     this._level = 1;
     this._experience = 0;
-    this._charData = charData;
+    this._baseStats = new StatBlock();
+    this._baseStats.initialize(charData.baseStats);
+    this._derivedStatsBlock = new DerivedStatsBlock();
+    this._derivedStatsBlock.initialize(charData.derivedStats);
+
     this._derivedStats = new DerivedStats();
+    this.updateStats();
+  }
+
+  public getDamage(mh: boolean, min: boolean): number {
+    if (mh) {
+      const weapon = this._equipment.find(
+        (e) => e.slot == EquipmentSlot.MainHand
+      );
+      if (weapon) {
+        return min
+          ? (weapon.stats as WeaponStatBlock).minDamage
+          : (weapon.stats as WeaponStatBlock).maxDamage;
+      }
+    } else {
+      const weapon = this._equipment.find(
+        (e) => e.slot == EquipmentSlot.OffHand
+      );
+      if (weapon) {
+        return min
+          ? (weapon.stats as WeaponStatBlock).minDamage
+          : (weapon.stats as WeaponStatBlock).maxDamage;
+      }
+    }
+    return min ? 1 : 2;
   }
 
   // this is the stupid version
@@ -167,22 +207,37 @@ export class Character {
   updateStats() {
     this.updateItemStats();
 
-    this._derivedStats.accuracy = this._charData.derivedStats.getAccuracy(
+    this._derivedStats.accuracy = this._derivedStatsBlock.getAccuracy(
       this.strength
     );
-    this._derivedStats.attackPower = this._charData.derivedStats.getAttack(
+    this._derivedStats.attackPower = this._derivedStatsBlock.getAttack(
       this.strength
     );
-    this._derivedStats.evasion = this._charData.derivedStats.getEvasion(
+    this._derivedStats.evasion = this._derivedStatsBlock.getEvasion(
       this.agility
     );
-    this._derivedStats.defense = this._charData.derivedStats.getDefense(
-      this.armor
-    );
-    this._derivedStats.critPercent = this._charData.derivedStats.getCritPercent(
+    this._derivedStats.armor = this._derivedStatsBlock.getArmor(this.defense);
+    this._derivedStats.critPercent = this._derivedStatsBlock.getCritPercent(
       this.dexterity
     );
+
+    let pct = this.health / this.maxHealth;
+    const max = this._derivedStatsBlock.getHitpoints(this.stamina);
+    this._maxHealth = max;
+    this._curHealth = max * pct;
+
+    pct = this.mana / this.maxMana;
+    this._maxMana = this._derivedStatsBlock.getManaPoints(
+      Math.max(this.intelligence, this.wisdom)
+    );
+    this._curMana = this._maxMana * pct;
+
+    // event
   }
 
-  applyDamage(amount: number) {}
+  applyDamage(amount: number) {
+    const dmg = Math.abs(amount);
+    this._curHealth = Math.max(0, this._curHealth - dmg);
+    // event
+  }
 }
