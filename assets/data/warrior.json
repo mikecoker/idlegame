@@ -26,5 +26,19 @@
     "baseAttackDelay": 2.2,
     "minAttackDelay": 0.8,
     "attackDelayReductionPerAgi": 0.0075
+  },
+  "progression": {
+    "initialLevel": 1,
+    "xp": {
+      "base": 110,
+      "perLevel": 60,
+      "exponent": 1.1
+    },
+    "statGrowth": {
+      "strength": 3,
+      "stamina": 3,
+      "defense": 4,
+      "agility": 1
+    }
   }
 }

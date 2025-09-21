@@ -1,0 +1,14 @@
+{
+  "id": "dungeon",
+  "name": "Dungeon Tier",
+  "xpPerWin": 60,
+  "gold": {
+    "min": 12,
+    "max": 24
+  },
+  "materialDrops": [
+    { "id": "enchanted-ore", "chance": 0.25, "min": 1, "max": 2 },
+    { "id": "ancient-cloth", "chance": 0.2, "min": 1, "max": 2 },
+    { "id": "mana-crystal", "chance": 0.15, "min": 1, "max": 1 }
+  ]
+}

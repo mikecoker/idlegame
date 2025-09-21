@@ -3,6 +3,7 @@ import { Character } from "./character";
 
 export interface EncounterConfig {
   tickInterval: number;
+  rewardConfig?: EncounterRewardConfig;
 }
 
 export interface EncounterSummary {
@@ -12,6 +13,20 @@ export interface EncounterSummary {
   totalDamageFromTarget: number;
   victor: "source" | "target" | null;
   running: boolean;
+  rewards: EncounterRewards;
+}
+
+export interface EncounterRewardConfig {
+  xpPerWin?: number;
+  goldMin?: number;
+  goldMax?: number;
+  materialDrops?: Array<{ id: string; chance: number; min: number; max: number }>;
+}
+
+export interface EncounterRewards {
+  xp: number;
+  gold: number;
+  materials: Record<string, number>;
 }
 
 export interface EncounterEvent extends AttackOutcome {
@@ -20,6 +35,12 @@ export interface EncounterEvent extends AttackOutcome {
 
 const MIN_INTERVAL = 0.01;
 const MIN_ATTACK_DELAY = 0.2;
+
+interface AttackHandState {
+  type: "main" | "off";
+  delay: number;
+  cooldown: number;
+}
 
 export class EncounterLoop {
   protected _sim: CombatSim;
@@ -33,8 +54,14 @@ export class EncounterLoop {
   protected _totalDamageFromSource = 0;
   protected _totalDamageFromTarget = 0;
   protected _victor: "source" | "target" | null = null;
-  protected _sourceCooldown = 0;
-  protected _targetCooldown = 0;
+  protected _sourceHands: AttackHandState[] = [];
+  protected _targetHands: AttackHandState[] = [];
+  protected _rewardConfig: EncounterRewardConfig;
+  protected _rewards: EncounterRewards = {
+    xp: 0,
+    gold: 0,
+    materials: {},
+  };
 
   constructor(
     sim: CombatSim,
@@ -46,8 +73,14 @@ export class EncounterLoop {
     this._source = source;
     this._target = target;
     this._tickInterval = Math.max(config?.tickInterval ?? 0.1, MIN_INTERVAL);
-    this._sourceCooldown = 0;
-    this._targetCooldown = 0;
+    this._sourceHands = this.createHandsForCharacter(this._source);
+    this._targetHands = this.createHandsForCharacter(this._target);
+    this._rewardConfig = {
+      xpPerWin: config?.rewardConfig?.xpPerWin ?? 0,
+      goldMin: config?.rewardConfig?.goldMin ?? 0,
+      goldMax: config?.rewardConfig?.goldMax ?? 0,
+      materialDrops: config?.rewardConfig?.materialDrops ?? [],
+    };
   }
 
   start() {
@@ -107,35 +140,41 @@ export class EncounterLoop {
       totalDamageFromTarget: this._totalDamageFromTarget,
       victor: this._victor,
       running: this._running,
+      rewards: this._rewards,
     };
   }
 
   protected advanceTick(): EncounterEvent[] {
     const outcomes: EncounterEvent[] = [];
 
-    this._sourceCooldown -= this._tickInterval;
-    this._targetCooldown -= this._tickInterval;
-
-    while (this._sourceCooldown <= 0 && !this._victor) {
-      this._sourceCooldown += this.getAttackDelay(this._source);
-      const outcome = this.resolveAndApply(this._source, this._target);
-      outcomes.push(outcome);
-    }
-
-    while (this._targetCooldown <= 0 && !this._victor) {
-      this._targetCooldown += this.getAttackDelay(this._target);
-      const outcome = this.resolveAndApply(this._target, this._source);
-      outcomes.push(outcome);
-    }
+    this.applyHandTicks(this._sourceHands, this._source, this._target, outcomes);
+    this.applyHandTicks(this._targetHands, this._target, this._source, outcomes);
 
     return outcomes;
   }
 
+  protected applyHandTicks(
+    hands: AttackHandState[],
+    attacker: Character,
+    defender: Character,
+    outcomes: EncounterEvent[]
+  ) {
+    hands.forEach((hand) => {
+      hand.cooldown -= this._tickInterval;
+      while (hand.cooldown <= 0 && !this._victor) {
+        hand.cooldown += hand.delay;
+        const outcome = this.resolveAndApply(attacker, defender, hand.type);
+        outcomes.push(outcome);
+      }
+    });
+  }
+
   protected resolveAndApply(
     attacker: Character,
-    defender: Character
+    defender: Character,
+    hand: "main" | "off"
   ): EncounterEvent {
-    const outcome = this._sim.resolveAttack(attacker, defender);
+    const outcome = this._sim.resolveAttack(attacker, defender, hand);
     this._swings += 1;
 
     if (outcome.result === "hit" && outcome.damage > 0) {
@@ -148,6 +187,9 @@ export class EncounterLoop {
       }
       if (!defender.isAlive) {
         this._victor = attacker === this._source ? "source" : "target";
+        if (this._victor === "source") {
+          this.awardRewards();
+        }
       }
     }
 
@@ -160,5 +202,61 @@ export class EncounterLoop {
   protected getAttackDelay(character: Character): number {
     const delay = character.getAttackDelaySeconds();
     return Math.max(MIN_ATTACK_DELAY, delay);
+  }
+
+  protected getOffhandDelay(character: Character): number | null {
+    if (!character.hasOffHandWeapon()) {
+      return null;
+    }
+    const delay = character.getAttackDelaySeconds("off");
+    return Math.max(MIN_ATTACK_DELAY, delay);
+  }
+
+  protected createHandsForCharacter(character: Character): AttackHandState[] {
+    const hands: AttackHandState[] = [];
+    const mainDelay = this.getAttackDelay(character);
+    hands.push({ type: "main", delay: mainDelay, cooldown: 0 });
+
+    const offDelay = this.getOffhandDelay(character);
+    if (offDelay !== null) {
+      hands.push({ type: "off", delay: offDelay, cooldown: offDelay / 2 });
+    }
+    return hands;
+  }
+
+  protected awardRewards() {
+    const config = this._rewardConfig;
+    const rewards: EncounterRewards = {
+      xp: config.xpPerWin ?? 0,
+      gold: this.rollGold(config.goldMin, config.goldMax),
+      materials: {},
+    };
+    if (Array.isArray(config.materialDrops)) {
+      config.materialDrops.forEach((drop) => {
+        if (Math.random() <= drop.chance) {
+          const qty = this.randRange(drop.min, drop.max);
+          if (qty > 0) {
+            rewards.materials[drop.id] = (rewards.materials[drop.id] ?? 0) + qty;
+          }
+        }
+      });
+    }
+    this._rewards = rewards;
+  }
+
+  protected rollGold(min?: number, max?: number): number {
+    if (min === undefined && max === undefined) {
+      return 0;
+    }
+    const low = Math.max(0, min ?? 0);
+    const high = Math.max(low, max ?? low);
+    return this.randRange(low, high);
+  }
+
+  protected randRange(min: number, max: number): number {
+    if (max <= min) {
+      return Math.floor(min);
+    }
+    return Math.floor(Math.random() * (max - min + 1)) + Math.floor(min);
   }
 }

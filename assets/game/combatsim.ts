@@ -8,6 +8,7 @@ export interface AttackOutcome {
   damage: number;
   result: AttackResult;
   critical: boolean;
+  hand: "main" | "off";
 }
 
 export class CombatSim {
@@ -55,10 +56,12 @@ export class CombatSim {
 
   protected calculateDamageRoll(
     attacker: Character,
-    defender: Character
+    defender: Character,
+    hand: "main" | "off"
   ): { damage: number; critical: boolean } {
+    const base = this.getBaseDamage(attacker, hand === "main");
     const defCap = Math.min(400, defender.defense);
-    let dmg = (100 / (100 + defCap)) * attacker.attackPower;
+    let dmg = base + (100 / (100 + defCap)) * attacker.attackPower;
     const critical = this.checkToCrit(attacker);
     if (critical) {
       dmg *= 2.0;
@@ -66,7 +69,11 @@ export class CombatSim {
     return { damage: dmg, critical };
   }
 
-  resolveAttack(attacker: Character, defender: Character): AttackOutcome {
+  resolveAttack(
+    attacker: Character,
+    defender: Character,
+    hand: "main" | "off" = "main"
+  ): AttackOutcome {
     if (!this.checkToHit(attacker, defender)) {
       return {
         attacker,
@@ -74,6 +81,7 @@ export class CombatSim {
         damage: 0,
         result: "miss",
         critical: false,
+        hand,
       };
     }
 
@@ -84,6 +92,7 @@ export class CombatSim {
         damage: 0,
         result: "dodge",
         critical: false,
+        hand,
       };
     }
 
@@ -94,21 +103,23 @@ export class CombatSim {
         damage: 0,
         result: "parry",
         critical: false,
+        hand,
       };
     }
 
-    const { damage, critical } = this.calculateDamageRoll(attacker, defender);
+    const { damage, critical } = this.calculateDamageRoll(attacker, defender, hand);
     return {
       attacker,
       defender,
       damage,
       result: "hit",
       critical,
+      hand,
     };
   }
 
   doCombat(attacker: Character, defender: Character) {
-    const outcome = this.resolveAttack(attacker, defender);
+    const outcome = this.resolveAttack(attacker, defender, "main");
     return outcome.damage;
   }
 }

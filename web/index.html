@@ -172,6 +172,10 @@ body {
         Target preset
         <select id="target-select"></select>
       </label>
+      <label>
+        Loot table
+        <select id="loot-select"></select>
+      </label>
     </section>
 
     <section class="panel" id="custom-panel">
@@ -214,6 +218,16 @@ body {
           <tr><th>Damage (dst)</th><td id="dst-dmg-cell">0</td></tr>
           <tr><th>Winner</th><td id="winner-cell">-</td></tr>
         </tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="reward-panel">
+      <h2>Rewards</h2>
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>Last Encounter</th><th>Run Total</th></tr>
+        </thead>
+        <tbody id="reward-table"></tbody>
       </table>
     </section>
 

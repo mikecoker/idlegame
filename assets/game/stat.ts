@@ -59,6 +59,46 @@ export class StatBlock extends StatBlockData {
     this.strength -= e.strength;
     this.wisdom -= e.wisdom;
   }
+
+  public applyDelta(delta: Partial<StatBlockData>) {
+    if (delta.agility !== undefined) {
+      this.agility += delta.agility;
+    }
+    if (delta.defense !== undefined) {
+      this.defense += delta.defense;
+    }
+    if (delta.charisma !== undefined) {
+      this.charisma += delta.charisma;
+    }
+    if (delta.dexterity !== undefined) {
+      this.dexterity += delta.dexterity;
+    }
+    if (delta.intelligence !== undefined) {
+      this.intelligence += delta.intelligence;
+    }
+    if (delta.stamina !== undefined) {
+      this.stamina += delta.stamina;
+    }
+    if (delta.strength !== undefined) {
+      this.strength += delta.strength;
+    }
+    if (delta.wisdom !== undefined) {
+      this.wisdom += delta.wisdom;
+    }
+  }
+
+  public toData(): StatBlockData {
+    const data = new StatBlockData();
+    data.strength = this.strength;
+    data.agility = this.agility;
+    data.dexterity = this.dexterity;
+    data.stamina = this.stamina;
+    data.intelligence = this.intelligence;
+    data.wisdom = this.wisdom;
+    data.charisma = this.charisma;
+    data.defense = this.defense;
+    return data;
+  }
 }
 
 export class DerivedStats {
