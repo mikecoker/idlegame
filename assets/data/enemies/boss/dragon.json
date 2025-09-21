@@ -1,0 +1,32 @@
+{
+  "id": "dragon",
+  "tier": "boss",
+  "baseStats": {
+    "strength": 32,
+    "agility": 16,
+    "dexterity": 18,
+    "stamina": 38,
+    "intelligence": 12,
+    "wisdom": 14,
+    "charisma": 10,
+    "defense": 85
+  },
+  "derivedStats": {
+    "baseHitpoints": 350,
+    "baseMana": 80,
+    "attackPerStr": 4.5,
+    "accPerStr": 3,
+    "evaPerAgi": 1.6,
+    "dexPerCrit": 2.5,
+    "acPerDef": 2.8,
+    "hpPerStamina": 9,
+    "manaPerIntOrWis": 3,
+    "baseDodge": 8,
+    "dodgePerAgi": 0.45,
+    "baseParry": 7,
+    "parryPerDex": 0.3,
+    "baseAttackDelay": 2.3,
+    "minAttackDelay": 1.0,
+    "attackDelayReductionPerAgi": 0.01
+  }
+}

@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IdleEQ Simulator</title>
     <style>
-body {
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
         margin: 0;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #10141a;
-        color: #f3f5f7;
+        background: #0f141c;
+        color: #f5f7fa;
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
         gap: 16px;
@@ -25,14 +29,46 @@ body {
         align-items: center;
       }
 
+      header h1 {
+        margin: 0;
+        font-size: 1.4rem;
+        letter-spacing: 0.04em;
+      }
+
+      header button {
+        margin-left: 8px;
+        padding: 8px 14px;
+        border: none;
+        border-radius: 6px;
+        background: #1d2734;
+        color: inherit;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.1s ease;
+      }
+
+      header button:hover {
+        background: #253242;
+        transform: translateY(-1px);
+      }
+
       .panel {
-        background: #1b212b;
-        border-radius: 8px;
-        padding: 16px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+        background: #161d27;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        padding: 18px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
+      }
+
+      .panel h2 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #8da5c5;
       }
 
       label {
@@ -42,31 +78,15 @@ body {
         font-size: 0.9rem;
       }
 
-      input,
       select,
-      button {
-        padding: 8px 12px;
+      input {
+        height: 34px;
         border-radius: 6px;
-        border: 1px solid transparent;
-        background: #232c3a;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0 10px;
+        background: #1d2734;
         color: inherit;
         font-size: 0.95rem;
-      }
-
-      button {
-        cursor: pointer;
-        font-weight: 600;
-        transition: transform 0.12s ease, background 0.12s ease;
-      }
-
-      button:hover {
-        transform: translateY(-1px);
-        background: #2d3748;
-      }
-
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
       }
 
       table {
@@ -82,68 +102,40 @@ body {
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       }
 
+      th {
+        color: #8da5c5;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
       .log {
         font-family: "Fira Mono", "SFMono-Regular", Menlo, monospace;
         font-size: 0.85rem;
-        background: #131821;
-        border-radius: 6px;
+        background: #121821;
+        border-radius: 8px;
         padding: 12px;
         overflow-y: auto;
-        max-height: 320px;
+        max-height: 360px;
         white-space: pre-wrap;
-      }
-
-      .custom-editors {
-        display: grid;
-        gap: 16px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      }
-
-      .custom-editor {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .custom-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .custom-editor textarea {
-        min-height: 220px;
-        resize: vertical;
-        background: #131821;
-        color: inherit;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-family: "Fira Mono", "SFMono-Regular", Menlo, monospace;
-        font-size: 0.82rem;
-      }
-
-      .custom-actions {
-        display: flex;
-        gap: 8px;
-      }
-
-      .custom-error {
-        color: #ff8a80;
-        font-size: 0.8rem;
-        min-height: 1em;
-      }
-
-      .custom-hint {
-        margin: 0;
-        font-size: 0.8rem;
-        color: rgba(255, 255, 255, 0.65);
+        line-height: 1.45;
       }
 
       @media (max-width: 960px) {
-        body {
-          grid-template-columns: 1fr;
+        header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        header div {
+          width: 100%;
+          display: flex;
+          gap: 8px;
+        }
+
+        header button {
+          flex: 1;
         }
       }
     </style>
@@ -165,12 +157,12 @@ body {
         <input id="tick-input" type="number" min="0.01" step="0.01" value="0.10" />
       </label>
       <label>
-        Source preset
-        <select id="source-select"></select>
+        Hero preset
+        <select id="hero-select"></select>
       </label>
       <label>
-        Target preset
-        <select id="target-select"></select>
+        Stage progression
+        <select id="stage-select"></select>
       </label>
       <label>
         Loot table
@@ -178,44 +170,18 @@ body {
       </label>
     </section>
 
-    <section class="panel" id="custom-panel">
-      <h2>Custom Presets</h2>
-      <div class="custom-editors">
-        <div class="custom-editor">
-          <div class="custom-header">
-            <h3>Source</h3>
-            <div class="custom-actions">
-              <button id="source-load-current" type="button">Load Selected</button>
-              <button id="source-apply-custom" type="button">Apply Custom</button>
-            </div>
-          </div>
-          <textarea id="source-custom-json" spellcheck="false" placeholder="{"baseStats":{...},"derivedStats":{...}}"></textarea>
-          <div class="custom-error" id="source-custom-error"></div>
-        </div>
-        <div class="custom-editor">
-          <div class="custom-header">
-            <h3>Target</h3>
-            <div class="custom-actions">
-              <button id="target-load-current" type="button">Load Selected</button>
-              <button id="target-apply-custom" type="button">Apply Custom</button>
-            </div>
-          </div>
-          <textarea id="target-custom-json" spellcheck="false" placeholder="{"baseStats":{...},"derivedStats":{...}}"></textarea>
-          <div class="custom-error" id="target-custom-error"></div>
-        </div>
-      </div>
-      <p class="custom-hint">Provide full CharacterData JSON (baseStats and derivedStats). Use “Load Selected” to seed the editor from the chosen preset.</p>
-    </section>
-
     <section class="panel" id="status-panel">
       <h2>Status</h2>
       <div id="status-text">Idle</div>
       <table>
         <tbody>
+          <tr><th>Stage</th><td id="stage-cell">-</td></tr>
+          <tr><th>Wave</th><td id="wave-cell">0</td></tr>
+          <tr><th>Opponent</th><td id="opponent-cell">-</td></tr>
           <tr><th>Elapsed</th><td id="elapsed-cell">0.0s</td></tr>
           <tr><th>Swings</th><td id="swings-cell">0</td></tr>
-          <tr><th>Damage (src)</th><td id="src-dmg-cell">0</td></tr>
-          <tr><th>Damage (dst)</th><td id="dst-dmg-cell">0</td></tr>
+          <tr><th>Hero Damage</th><td id="hero-dmg-cell">0</td></tr>
+          <tr><th>Enemy Damage</th><td id="enemy-dmg-cell">0</td></tr>
           <tr><th>Winner</th><td id="winner-cell">-</td></tr>
         </tbody>
       </table>
@@ -231,29 +197,29 @@ body {
       </table>
     </section>
 
-    <section class="panel" id="log-panel">
-      <h2>Event Log</h2>
-      <div class="log" id="log-output"></div>
+    <section class="panel" id="telemetry-panel">
+      <h2>Telemetry</h2>
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>Hero</th><th>Enemy</th></tr>
+        </thead>
+        <tbody id="telemetry-table"></tbody>
+      </table>
     </section>
 
     <section class="panel" id="stats-panel">
-      <h2>Character Snapshot</h2>
+      <h2>Hero Snapshot</h2>
       <table>
         <thead>
-          <tr><th>Stat</th><th>Source</th><th>Target</th></tr>
+          <tr><th>Stat</th><th>Value</th></tr>
         </thead>
         <tbody id="stats-table"></tbody>
       </table>
     </section>
 
-    <section class="panel" id="telemetry-panel">
-      <h2>Telemetry</h2>
-      <table>
-        <thead>
-          <tr><th>Metric</th><th>Source</th><th>Target</th></tr>
-        </thead>
-        <tbody id="telemetry-table"></tbody>
-      </table>
+    <section class="panel" id="log-panel">
+      <h2>Event Log</h2>
+      <div class="log" id="log-output"></div>
     </section>
 
     <script type="module" src="./dist/web/src/main.js"></script>

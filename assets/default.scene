@@ -1986,16 +1986,25 @@
     },
     "_enabled": true,
     "__prefab": null,
+    "heroData": {
+      "__uuid__": "4b85d69e-f74a-40c0-96c9-e0624a102ee7",
+      "__expectedType__": "cc.JsonAsset"
+    },
     "characterOneData": {
       "__uuid__": "d0df3584-5578-4744-87af-0f61e625f5a0",
       "__expectedType__": "cc.JsonAsset"
     },
-    "srcCharacter": null,
+    "enemyWaveData": [],
     "characterTwoData": {
       "__uuid__": "33cb2c9c-4703-4594-a63f-e65b0319f198",
       "__expectedType__": "cc.JsonAsset"
     },
+    "srcCharacter": null,
     "dstCharacter": null,
+    "lootTable": {
+      "__uuid__": "2a58117f-b193-427a-ae86-af93790a8f4e",
+      "__expectedType__": "cc.JsonAsset"
+    },
     "tickIntervalSeconds": 0.1,
     "autoStart": true,
     "_id": "b1nP0KuYpOgJzFsZttiMTC"

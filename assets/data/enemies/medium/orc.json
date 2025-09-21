@@ -1,0 +1,32 @@
+{
+  "id": "orc",
+  "tier": "medium",
+  "baseStats": {
+    "strength": 16,
+    "agility": 9,
+    "dexterity": 8,
+    "stamina": 16,
+    "intelligence": 4,
+    "wisdom": 3,
+    "charisma": 4,
+    "defense": 40
+  },
+  "derivedStats": {
+    "baseHitpoints": 110,
+    "baseMana": 10,
+    "attackPerStr": 3,
+    "accPerStr": 2,
+    "evaPerAgi": 1,
+    "dexPerCrit": 1.5,
+    "acPerDef": 2,
+    "hpPerStamina": 5,
+    "manaPerIntOrWis": 1,
+    "baseDodge": 6,
+    "dodgePerAgi": 0.35,
+    "baseParry": 4,
+    "parryPerDex": 0.2,
+    "baseAttackDelay": 2.4,
+    "minAttackDelay": 0.9,
+    "attackDelayReductionPerAgi": 0.005
+  }
+}

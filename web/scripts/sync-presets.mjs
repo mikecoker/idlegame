@@ -11,6 +11,7 @@ const sourceDir = resolve("assets/data");
 const distRoot = resolve("web/dist");
 const dataDir = join(distRoot, "assets/data");
 const manifestPath = join(distRoot, "assets/presets.json");
+const directoriesToMirror = ["enemies", "loot", "encounters"];
 
 function toLabel(id) {
   return id
@@ -47,12 +48,46 @@ async function syncPresets() {
     });
   }
 
+  await mirrorSubdirectories();
+
   manifest.sort((a, b) => a.label.localeCompare(b.label));
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
   await rewriteImports();
   console.log(
     `[sync-presets] Copied ${manifest.length} preset(s) -> web/dist, generated manifest, and patched module imports.`
   );
+}
+
+async function mirrorSubdirectories() {
+  for (const dirName of directoriesToMirror) {
+    const sourcePath = join(sourceDir, dirName);
+    const targetPath = join(dataDir, dirName);
+    await copyDirectory(sourcePath, targetPath);
+  }
+}
+
+async function copyDirectory(src, dest) {
+  const entries = await readdir(src, { withFileTypes: true }).catch((err) => {
+    if (err && err.code === "ENOENT") {
+      return [];
+    }
+    throw err;
+  });
+
+  await mkdir(dest, { recursive: true });
+
+  for (const entry of entries) {
+    const srcPath = join(src, entry.name);
+    const destPath = join(dest, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirectory(srcPath, destPath);
+    } else if (entry.isFile()) {
+      if (entry.name.endsWith(".meta")) {
+        continue;
+      }
+      await copyFile(srcPath, destPath);
+    }
+  }
 }
 
 async function rewriteImports() {

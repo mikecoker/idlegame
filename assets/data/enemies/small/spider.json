@@ -1,0 +1,32 @@
+{
+  "id": "spider",
+  "tier": "small",
+  "baseStats": {
+    "strength": 7,
+    "agility": 12,
+    "dexterity": 9,
+    "stamina": 7,
+    "intelligence": 2,
+    "wisdom": 1,
+    "charisma": 1,
+    "defense": 14
+  },
+  "derivedStats": {
+    "baseHitpoints": 30,
+    "baseMana": 0,
+    "attackPerStr": 1,
+    "accPerStr": 2,
+    "evaPerAgi": 3,
+    "dexPerCrit": 2,
+    "acPerDef": 1,
+    "hpPerStamina": 3,
+    "manaPerIntOrWis": 0,
+    "baseDodge": 12,
+    "dodgePerAgi": 0.55,
+    "baseParry": 1,
+    "parryPerDex": 0.1,
+    "baseAttackDelay": 2.2,
+    "minAttackDelay": 0.65,
+    "attackDelayReductionPerAgi": 0.012
+  }
+}

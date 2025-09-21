@@ -1,0 +1,32 @@
+{
+  "id": "giant",
+  "tier": "boss",
+  "baseStats": {
+    "strength": 28,
+    "agility": 10,
+    "dexterity": 12,
+    "stamina": 34,
+    "intelligence": 6,
+    "wisdom": 6,
+    "charisma": 5,
+    "defense": 70
+  },
+  "derivedStats": {
+    "baseHitpoints": 280,
+    "baseMana": 20,
+    "attackPerStr": 4,
+    "accPerStr": 2.5,
+    "evaPerAgi": 1.2,
+    "dexPerCrit": 1.8,
+    "acPerDef": 2.5,
+    "hpPerStamina": 8,
+    "manaPerIntOrWis": 2,
+    "baseDodge": 6,
+    "dodgePerAgi": 0.35,
+    "baseParry": 6,
+    "parryPerDex": 0.25,
+    "baseAttackDelay": 2.7,
+    "minAttackDelay": 1.2,
+    "attackDelayReductionPerAgi": 0.005
+  }
+}

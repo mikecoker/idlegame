@@ -361,6 +361,7 @@ export class Character {
 
     if (levelsGained > 0) {
       this.updateStats();
+      this.resetVitals();
     }
 
     return levelsGained;
