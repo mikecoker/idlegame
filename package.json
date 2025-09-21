@@ -5,7 +5,7 @@
     "version": "3.8.0"
   },
   "scripts": {
-    "build:web": "tsc --project tsconfig.web.json --pretty && node ./web/scripts/copy-presets.mjs",
+    "build:web": "tsc --project tsconfig.web.json --pretty && node ./web/scripts/sync-presets.mjs",
     "serve:web": "npm run build:web && npx --yes http-server web --port 4321"
   },
   "devDependencies": {

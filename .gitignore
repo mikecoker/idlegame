@@ -12,6 +12,8 @@ native
 # NPM
 #//////////////////////////
 node_modules/
+web/dist/
+.DS_Store
 
 #//////////////////////////
 # VSCode

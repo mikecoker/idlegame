@@ -2,7 +2,7 @@ import { _decorator, Component, JsonAsset } from "cc";
 import { CombatSim } from "./combatsim";
 import { Character, CharacterData } from "./character";
 import { UICharacter } from "./UICharacter";
-import { EncounterLoop, EncounterSummary } from "./encounter";
+import { EncounterEvent, EncounterLoop, EncounterSummary } from "./encounter";
 const { ccclass, property } = _decorator;
 
 @ccclass("Simulator")
@@ -131,21 +131,22 @@ export class Simulator extends Component {
       events.forEach((event) => {
         const attackerLabel = this.getCombatantLabel(event.attacker);
         const defenderLabel = this.getCombatantLabel(event.defender);
+        const time = event.timestamp.toFixed(2);
 
         switch (event.result) {
           case "miss":
             console.log(
-              `[Encounter] ${attackerLabel} swings at ${defenderLabel} and misses`
+              `[Encounter][${time}s] ${attackerLabel} swings at ${defenderLabel} and misses`
             );
             break;
           case "dodge":
             console.log(
-              `[Encounter] ${defenderLabel} dodges ${attackerLabel}'s attack`
+              `[Encounter][${time}s] ${defenderLabel} dodges ${attackerLabel}'s attack`
             );
             break;
           case "parry":
             console.log(
-              `[Encounter] ${defenderLabel} parries ${attackerLabel}`
+              `[Encounter][${time}s] ${defenderLabel} parries ${attackerLabel}`
             );
             break;
           case "hit":
@@ -153,7 +154,7 @@ export class Simulator extends Component {
             const damage = Math.max(0, Math.round(event.damage));
             const critText = event.critical ? " (crit)" : "";
             console.log(
-              `[Encounter] ${attackerLabel} hits ${defenderLabel} for ${damage}${critText}`
+              `[Encounter][${time}s] ${attackerLabel} hits ${defenderLabel} for ${damage}${critText}`
             );
             break;
           }

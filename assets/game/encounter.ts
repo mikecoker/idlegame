@@ -14,6 +14,10 @@ export interface EncounterSummary {
   running: boolean;
 }
 
+export interface EncounterEvent extends AttackOutcome {
+  timestamp: number;
+}
+
 const MIN_INTERVAL = 0.01;
 const MIN_ATTACK_DELAY = 0.2;
 
@@ -73,13 +77,13 @@ export class EncounterLoop {
     return this._victor !== null;
   }
 
-  tick(deltaSeconds: number): AttackOutcome[] {
+  tick(deltaSeconds: number): EncounterEvent[] {
     if (!this._running || this._victor) {
       return [];
     }
 
     this._accumulator += deltaSeconds;
-    const events: AttackOutcome[] = [];
+    const events: EncounterEvent[] = [];
 
     while (this._accumulator >= this._tickInterval && !this._victor) {
       this._accumulator -= this._tickInterval;
@@ -106,8 +110,8 @@ export class EncounterLoop {
     };
   }
 
-  protected advanceTick(): AttackOutcome[] {
-    const outcomes: AttackOutcome[] = [];
+  protected advanceTick(): EncounterEvent[] {
+    const outcomes: EncounterEvent[] = [];
 
     this._sourceCooldown -= this._tickInterval;
     this._targetCooldown -= this._tickInterval;
@@ -130,7 +134,7 @@ export class EncounterLoop {
   protected resolveAndApply(
     attacker: Character,
     defender: Character
-  ): AttackOutcome {
+  ): EncounterEvent {
     const outcome = this._sim.resolveAttack(attacker, defender);
     this._swings += 1;
 
@@ -147,7 +151,10 @@ export class EncounterLoop {
       }
     }
 
-    return outcome;
+    return {
+      ...outcome,
+      timestamp: this._elapsedSeconds,
+    };
   }
 
   protected getAttackDelay(character: Character): number {

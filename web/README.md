@@ -27,6 +27,7 @@ npm run serve:web   # build then serve web/ on http://localhost:4321
 - choose source/target presets,
 - adjust tick interval,
 - start/pause/reset the encounter,
-- inspect live combat logs and stat snapshots.
+- inspect live combat logs, stat snapshots, and per-combatant telemetry (hit/crit/miss rates, average hit, DPS).
+- edit or author new presets by pasting CharacterData JSON into the "Custom Presets" panel and applying it to either combatant.
 
 All simulation logic continues to live under `assets/game/`, so changes there propagate to both the web harness and the Cocos project.
