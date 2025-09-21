@@ -13,4 +13,8 @@ export class UIStatLine extends Component {
     this.stat.string = stat;
     this.value.string = value;
   }
+
+  public setValue(value: string) {
+    this.value.string = value;
+  }
 }

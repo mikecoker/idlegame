@@ -5,7 +5,8 @@ const { ccclass, property } = _decorator;
 
 @ccclass("UICharacter")
 export class UICharacter extends Component {
-  protected _stats: UIStatLine[] = [];
+  protected _statLines: Map<string, UIStatLine> = new Map();
+  protected _character: Character | null = null;
 
   @property(Prefab)
   statLinePrefab: Prefab = null;
@@ -13,29 +14,57 @@ export class UICharacter extends Component {
   start() {}
 
   setCharacter(character: Character) {
-    this._stats.forEach((stat) => {
-      stat.node.destroy();
+    this._character = character;
+    this.clearStatLines();
+
+    const statNames = this.getStatNames(character);
+    statNames.forEach((statName) => {
+      const value = this.readStatValue(character, statName);
+      const statLineNode = instantiate(this.statLinePrefab);
+      this.node.addChild(statLineNode);
+
+      const uiStatLine = statLineNode.getComponent(UIStatLine);
+      uiStatLine.setStat(statName, value);
+      this._statLines.set(statName, uiStatLine);
     });
-    this._stats = [];
+  }
 
-    // const statNames = Object.keys(character).filter((key) => {
-    //   return typeof character[key] !== "function";
-    // });
+  refreshValues() {
+    if (!this._character) {
+      return;
+    }
 
-    const statNames = Object.entries(
+    this._statLines.forEach((line, statName) => {
+      const value = this.readStatValue(this._character, statName);
+      line.setValue(value);
+    });
+  }
+
+  protected clearStatLines() {
+    this._statLines.forEach((line) => {
+      line.node.destroy();
+    });
+    this._statLines.clear();
+  }
+
+  protected getStatNames(character: Character): string[] {
+    return Object.entries(
       Object.getOwnPropertyDescriptors(Reflect.getPrototypeOf(character))
     )
-      .filter((e) => typeof e[1].get === "function" && e[0] !== "__proto__")
-      .map((e) => e[0]);
+      .filter((entry) => typeof entry[1].get === "function" && entry[0] !== "__proto__")
+      .map((entry) => entry[0]);
+  }
 
-    statNames.forEach((statName) => {
-      const stat = character[statName];
-      const statLine = instantiate(this.statLinePrefab);
-      this.node.addChild(statLine);
-
-      const uiStatLine = statLine.getComponent(UIStatLine);
-      uiStatLine.setStat(statName, stat.toString());
-      this._stats.push(uiStatLine);
-    });
+  protected readStatValue(character: Character, statName: string): string {
+    const rawValue = (character as any)[statName];
+    if (typeof rawValue === "number") {
+      if (statName.toLowerCase().includes("percent")) {
+        return `${(rawValue * 100).toFixed(1)}%`;
+      }
+      return Number.isInteger(rawValue)
+        ? rawValue.toString()
+        : rawValue.toFixed(2);
+    }
+    return `${rawValue}`;
   }
 }

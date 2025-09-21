@@ -47,6 +47,15 @@ export class Character {
     return this._maxMana;
   }
 
+  public get isAlive(): boolean {
+    return this._curHealth > 0;
+  }
+
+  public resetVitals() {
+    this._curHealth = this._maxHealth;
+    this._curMana = this._maxMana;
+  }
+
   public get defense(): number {
     return (
       this._baseStats.defense +
@@ -125,6 +134,15 @@ export class Character {
   }
   public get critPercent(): number {
     return this._derivedStats.critPercent;
+  }
+  public get dodgePercent(): number {
+    return this._derivedStats.dodgePercent;
+  }
+  public get parryPercent(): number {
+    return this._derivedStats.parryPercent;
+  }
+  public get attackDelay(): number {
+    return this._derivedStats.attackDelay;
   }
 
   constructor(charData: CharacterData) {
@@ -220,6 +238,15 @@ export class Character {
     this._derivedStats.critPercent = this._derivedStatsBlock.getCritPercent(
       this.dexterity
     );
+    this._derivedStats.dodgePercent = this._derivedStatsBlock.getDodgePercent(
+      this.agility
+    );
+    this._derivedStats.parryPercent = this._derivedStatsBlock.getParryPercent(
+      this.dexterity
+    );
+    this._derivedStats.attackDelay = this._derivedStatsBlock.getAttackDelay(
+      this.agility
+    );
 
     let pct = this.health / this.maxHealth;
     const max = this._derivedStatsBlock.getHitpoints(this.stamina);
@@ -239,5 +266,18 @@ export class Character {
     const dmg = Math.abs(amount);
     this._curHealth = Math.max(0, this._curHealth - dmg);
     // event
+  }
+
+  public getAttackDelaySeconds(): number {
+    const weapon = this._equipment.find(
+      (e) => e.slot == EquipmentSlot.MainHand
+    );
+    if (weapon) {
+      const stats = weapon.stats as WeaponStatBlock;
+      if (stats && typeof stats.delay === "number" && stats.delay > 0) {
+        return stats.delay;
+      }
+    }
+    return this.attackDelay;
   }
 }

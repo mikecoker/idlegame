@@ -67,9 +67,14 @@ export class DerivedStats {
   public accuracy = 10;
   public evasion = 10;
   public critPercent = 0.1;
+  public dodgePercent = 0;
+  public parryPercent = 0;
+  public attackDelay = 2;
 }
 
 const cMaxCrit = 75;
+const cMaxDodge = 45;
+const cMaxParry = 35;
 
 export class DerivedStatsBlockData {
   public baseHitpoints: number = 10;
@@ -81,6 +86,13 @@ export class DerivedStatsBlockData {
   public acPerDef: number = 10;
   public hpPerStamina: number = 4;
   public manaPerIntOrWis: number = 4;
+  public baseDodge: number = 5;
+  public dodgePerAgi: number = 0.2;
+  public baseParry: number = 2;
+  public parryPerDex: number = 0.1;
+  public baseAttackDelay: number = 2;
+  public minAttackDelay: number = 0.6;
+  public attackDelayReductionPerAgi: number = 0;
 }
 
 export class DerivedStatsBlock extends DerivedStatsBlockData {
@@ -94,6 +106,14 @@ export class DerivedStatsBlock extends DerivedStatsBlockData {
     this.acPerDef = block.acPerDef;
     this.hpPerStamina = block.hpPerStamina;
     this.manaPerIntOrWis = block.manaPerIntOrWis;
+    this.baseDodge = block.baseDodge ?? this.baseDodge;
+    this.dodgePerAgi = block.dodgePerAgi ?? this.dodgePerAgi;
+    this.baseParry = block.baseParry ?? this.baseParry;
+    this.parryPerDex = block.parryPerDex ?? this.parryPerDex;
+    this.baseAttackDelay = block.baseAttackDelay ?? this.baseAttackDelay;
+    this.minAttackDelay = block.minAttackDelay ?? this.minAttackDelay;
+    this.attackDelayReductionPerAgi =
+      block.attackDelayReductionPerAgi ?? this.attackDelayReductionPerAgi;
   }
 
   public getHitpoints(sta: number): number {
@@ -122,6 +142,24 @@ export class DerivedStatsBlock extends DerivedStatsBlockData {
 
   public getCritPercent(dex: number): number {
     return Math.min(cMaxCrit, Math.floor(dex * this.dexPerCrit)) / 100.0;
+  }
+
+  public getDodgePercent(agi: number): number {
+    return (
+      Math.min(cMaxDodge, this.baseDodge + agi * this.dodgePerAgi) / 100.0
+    );
+  }
+
+  public getParryPercent(dex: number): number {
+    return (
+      Math.min(cMaxParry, this.baseParry + dex * this.parryPerDex) / 100.0
+    );
+  }
+
+  public getAttackDelay(agi: number): number {
+    const reduced =
+      this.baseAttackDelay - agi * this.attackDelayReductionPerAgi;
+    return Math.max(this.minAttackDelay, reduced);
   }
 }
 

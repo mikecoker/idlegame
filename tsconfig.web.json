@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "target": "ES2020",
+    "lib": ["DOM", "ES2020"],
+    "outDir": "web/dist",
+    "rootDir": "",
+    "types": [],
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    "assets/game/constants.ts",
+    "assets/game/stat.ts",
+    "assets/game/item.ts",
+    "assets/game/character.ts",
+    "assets/game/combatsim.ts",
+    "assets/game/encounter.ts",
+    "web/src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "temp"
+  ]
+}

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IdleEQ Simulator</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #10141a;
+        color: #f3f5f7;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        min-height: 100vh;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      header {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .panel {
+        background: #1b212b;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.9rem;
+      }
+
+      input,
+      select,
+      button {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: #232c3a;
+        color: inherit;
+        font-size: 0.95rem;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 600;
+        transition: transform 0.12s ease, background 0.12s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        background: #2d3748;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 6px 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .log {
+        font-family: "Fira Mono", "SFMono-Regular", Menlo, monospace;
+        font-size: 0.85rem;
+        background: #131821;
+        border-radius: 6px;
+        padding: 12px;
+        overflow-y: auto;
+        max-height: 320px;
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 960px) {
+        body {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>IdleEQ Simulator Harness</h1>
+      <div>
+        <button id="start-button">Start</button>
+        <button id="pause-button">Pause</button>
+        <button id="reset-button">Reset</button>
+      </div>
+    </header>
+
+    <section class="panel" id="config-panel">
+      <h2>Encounter Config</h2>
+      <label>
+        Tick interval (seconds)
+        <input id="tick-input" type="number" min="0.01" step="0.01" value="0.10" />
+      </label>
+      <label>
+        Source preset
+        <select id="source-select"></select>
+      </label>
+      <label>
+        Target preset
+        <select id="target-select"></select>
+      </label>
+    </section>
+
+    <section class="panel" id="status-panel">
+      <h2>Status</h2>
+      <div id="status-text">Idle</div>
+      <table>
+        <tbody>
+          <tr><th>Elapsed</th><td id="elapsed-cell">0.0s</td></tr>
+          <tr><th>Swings</th><td id="swings-cell">0</td></tr>
+          <tr><th>Damage (src)</th><td id="src-dmg-cell">0</td></tr>
+          <tr><th>Damage (dst)</th><td id="dst-dmg-cell">0</td></tr>
+          <tr><th>Winner</th><td id="winner-cell">-</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="log-panel">
+      <h2>Event Log</h2>
+      <div class="log" id="log-output"></div>
+    </section>
+
+    <section class="panel" id="stats-panel">
+      <h2>Character Snapshot</h2>
+      <table>
+        <thead>
+          <tr><th>Stat</th><th>Source</th><th>Target</th></tr>
+        </thead>
+        <tbody id="stats-table"></tbody>
+      </table>
+    </section>
+
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>

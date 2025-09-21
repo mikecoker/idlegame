@@ -1,5 +1,15 @@
 import { Character } from "./character";
 
+export type AttackResult = "miss" | "dodge" | "parry" | "hit";
+
+export interface AttackOutcome {
+  attacker: Character;
+  defender: Character;
+  damage: number;
+  result: AttackResult;
+  critical: boolean;
+}
+
 export class CombatSim {
   randInt(min: number, max?: number): number {
     if (!max) {
@@ -11,12 +21,22 @@ export class CombatSim {
 
   checkToHit(attacker: Character, defender: Character): boolean {
     const toHit =
-      (200 * attacker.accuracy) / (attacker.accuracy + defender.evasion);
+      (200 * attacker.accuracy) / (attacker.accuracy + defender.evasion + 1);
     return this.randInt(100) <= toHit;
   }
 
   checkToCrit(attacker: Character): boolean {
     return Math.random() < attacker.critPercent;
+  }
+
+  checkDodge(attacker: Character, defender: Character): boolean {
+    const dodgeChance = defender.dodgePercent - attacker.accuracy * 0.0005;
+    return Math.random() < Math.max(0, dodgeChance);
+  }
+
+  checkParry(attacker: Character, defender: Character): boolean {
+    const parryChance = defender.parryPercent - attacker.accuracy * 0.0002;
+    return Math.random() < Math.max(0, parryChance);
   }
 
   getBaseDamage(attacker: Character, mainHand: boolean): number {
@@ -33,24 +53,63 @@ export class CombatSim {
     return this.randInt(min, max);
   }
 
-  calculateDamage(attacker: Character, defender: Character): number {
-    // value = 0.1f * armor / (8.5f * level + 40);
-    // value = Math.Max(Math.Min(value, 0.75f), 0);
-
+  protected calculateDamageRoll(
+    attacker: Character,
+    defender: Character
+  ): { damage: number; critical: boolean } {
     const defCap = Math.min(400, defender.defense);
     let dmg = (100 / (100 + defCap)) * attacker.attackPower;
-    if (this.checkToCrit(attacker)) {
+    const critical = this.checkToCrit(attacker);
+    if (critical) {
       dmg *= 2.0;
     }
-    return dmg;
+    return { damage: dmg, critical };
+  }
+
+  resolveAttack(attacker: Character, defender: Character): AttackOutcome {
+    if (!this.checkToHit(attacker, defender)) {
+      return {
+        attacker,
+        defender,
+        damage: 0,
+        result: "miss",
+        critical: false,
+      };
+    }
+
+    if (this.checkDodge(attacker, defender)) {
+      return {
+        attacker,
+        defender,
+        damage: 0,
+        result: "dodge",
+        critical: false,
+      };
+    }
+
+    if (this.checkParry(attacker, defender)) {
+      return {
+        attacker,
+        defender,
+        damage: 0,
+        result: "parry",
+        critical: false,
+      };
+    }
+
+    const { damage, critical } = this.calculateDamageRoll(attacker, defender);
+    return {
+      attacker,
+      defender,
+      damage,
+      result: "hit",
+      critical,
+    };
   }
 
   doCombat(attacker: Character, defender: Character) {
-    if (this.checkToHit(attacker, defender)) {
-      const dmg = this.calculateDamage(attacker, defender);
-      return dmg;
-    }
-    return 0;
+    const outcome = this.resolveAttack(attacker, defender);
+    return outcome.damage;
   }
 }
 
