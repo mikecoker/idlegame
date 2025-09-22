@@ -1,0 +1,17 @@
+{
+  "id": "steel-sword",
+  "name": "Steel Longsword",
+  "tier": "medium",
+  "type": "weapon",
+  "slot": "MainHand",
+  "power": 20,
+  "stats": {
+    "strength": 4,
+    "dexterity": 2
+  },
+  "weapon": {
+    "minDamage": 16,
+    "maxDamage": 26,
+    "delay": 2.0
+  }
+}

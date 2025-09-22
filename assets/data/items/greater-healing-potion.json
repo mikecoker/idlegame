@@ -1,0 +1,10 @@
+{
+  "id": "greater-healing-potion",
+  "name": "Greater Healing Potion",
+  "tier": "boss",
+  "type": "consumable",
+  "effect": {
+    "kind": "heal",
+    "percent": 0.8
+  }
+}

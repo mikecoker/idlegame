@@ -6,6 +6,13 @@ import {
   EncounterRewardConfig,
   EncounterSummary,
 } from "../../assets/game/encounter";
+import { EquipmentSlot, ItemType } from "../../assets/game/constants";
+import { EquipmentItem } from "../../assets/game/item";
+import {
+  StatBlock,
+  WeaponStatBlock,
+  ArmorStatBlock,
+} from "../../assets/game/stat";
 
 interface Preset {
   id: string;
@@ -61,6 +68,36 @@ interface CombatTelemetry {
   totalDamage: number;
 }
 
+interface ItemDefinition {
+  id: string;
+  name: string;
+  tier: string;
+  type: "weapon" | "armor" | "consumable";
+  slot?: string;
+  power?: number;
+  stats?: Partial<Record<keyof CharacterData["baseStats"], number>>;
+  weapon?: {
+    minDamage: number;
+    maxDamage: number;
+    delay: number;
+  };
+  armor?: {
+    armor: number;
+  };
+  effect?: {
+    kind: "heal";
+    percent: number;
+  };
+}
+
+interface CraftingRecipe {
+  id: string;
+  result: string;
+  type: "equipment" | "consumable";
+  tier: string;
+  cost: Record<string, number>;
+}
+
 interface PersistedState {
   version: number;
   heroId: string;
@@ -72,7 +109,24 @@ interface PersistedState {
   rewards: EncounterRewards;
   lastRewards?: EncounterRewards;
   heroProgress?: CharacterProgressSnapshot;
+  history?: EncounterHistoryEntry[];
+  historyCounter?: number;
+  materialsStock?: Record<string, number>;
+  equippedItems?: Record<string, string | null>;
+  consumables?: Record<string, number>;
+  equipmentInventory?: Record<string, number>;
   timestamp: number;
+}
+
+interface EncounterHistoryEntry {
+  index: number;
+  stage: string;
+  wave: number;
+  opponent: string;
+  result: "Victory" | "Defeat";
+  heroHP: string;
+  enemyHP: string;
+  rewards: EncounterRewards;
 }
 
 interface EncounterRewards {
@@ -129,6 +183,9 @@ class SimulatorHarness {
     boss: [],
   };
   protected stages: StageDefinition[] = [];
+  protected itemDefs: Map<string, ItemDefinition> = new Map();
+  protected recipes: CraftingRecipe[] = [];
+  protected recipeMap: Map<string, CraftingRecipe> = new Map();
 
   protected stageIndex = 0;
   protected stageWaveCompleted = 0;
@@ -141,6 +198,15 @@ class SimulatorHarness {
   protected lootTables: LootTableRecord[] = [];
   protected rewardConfig: EncounterRewardConfig = { xpPerWin: 0 };
   protected selectedLootId: string | null = null;
+  protected materialsStock: Record<string, number> = {};
+  protected equippedItems: Record<string, string | null> = {
+    MainHand: null,
+    OffHand: null,
+    Head: null,
+    Chest: null,
+  };
+  protected consumables: Record<string, number> = {};
+  protected equipmentInventory: Record<string, number> = {};
 
   protected telemetry = {
     hero: createTelemetryBucket(),
@@ -160,6 +226,9 @@ class SimulatorHarness {
   protected pendingSourceProgress?: CharacterProgressSnapshot;
   protected autoStart = true;
 
+  protected history: EncounterHistoryEntry[] = [];
+  protected historyCounter = 0;
+
   async init() {
     this.setStatusMessage("Loading data...");
 
@@ -170,19 +239,28 @@ class SimulatorHarness {
     this.heroOptions = heroOptions;
     this.lootTables = lootTables;
 
-    await Promise.all([this.loadEnemyPools(), this.loadStages()]);
+    await Promise.all([
+      this.loadEnemyPools(),
+      this.loadStages(),
+      this.loadItemDefinitions(),
+      this.loadRecipes(),
+    ]);
 
     this.populateHeroSelect();
     this.populateStageSelect();
     this.populateLootSelect();
     this.bindControls();
 
-    this.restoreState();
-    this.resetEncounter(true);
+    const hasState = this.restoreState();
+    this.resetEncounter(!hasState);
     this.refreshStatus(true);
     this.renderRewards();
     this.renderTelemetry();
     this.renderStatsTable();
+    this.renderEquipment();
+    this.renderHistory();
+    this.populateRecipeSelects();
+    this.updateCraftingAvailability();
   }
 
   protected async loadHeroPresets(): Promise<Preset[]> {
@@ -280,6 +358,64 @@ class SimulatorHarness {
     }
   }
 
+  protected async loadItemDefinitions(): Promise<void> {
+    const map = new Map<string, ItemDefinition>();
+    try {
+      const response = await fetch(`./dist/assets/data/items/manifest.json`, {
+        cache: "no-cache",
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      const manifest = (await response.json()) as {
+        items: Array<{ id: string; path: string }>;
+      };
+
+      for (const entry of manifest.items ?? []) {
+        try {
+          const resolvedPath = entry.path.startsWith("dist/")
+            ? entry.path
+            : `dist/${entry.path}`;
+          const itemResponse = await fetch(`./${resolvedPath}`, {
+            cache: "no-cache",
+          });
+          if (!itemResponse.ok) {
+            throw new Error(`${itemResponse.status} ${itemResponse.statusText}`);
+          }
+          const data = (await itemResponse.json()) as ItemDefinition;
+          map.set(data.id, data);
+        } catch (err) {
+          console.warn(`[Harness] Failed to load item '${entry.id}'`, err);
+        }
+      }
+    } catch (err) {
+      console.warn("[Harness] Failed to load item manifest", err);
+    }
+
+    this.itemDefs = map;
+  }
+
+  protected async loadRecipes(): Promise<void> {
+    try {
+      const response = await fetch(`./dist/assets/data/crafting/recipes.json`, {
+        cache: "no-cache",
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+      const json = await response.json();
+      this.recipes = json.recipes ?? [];
+      this.recipeMap = new Map();
+      this.recipes.forEach((recipe) => {
+        this.recipeMap.set(recipe.id, recipe);
+      });
+    } catch (err) {
+      console.warn("[Harness] Failed to load crafting recipes", err);
+      this.recipes = [];
+      this.recipeMap = new Map();
+    }
+  }
+
   protected async loadLootTables(): Promise<LootTableRecord[]> {
     try {
       const response = await fetch(`./dist/assets/data/loot/manifest.json`, {
@@ -350,7 +486,11 @@ class SimulatorHarness {
 
     startBtn?.addEventListener("click", () => {
       if (!this.encounter) {
-        this.resetEncounter(false);
+        if (this.currentWaveQueue.length) {
+          this.startNextEncounter(false);
+        } else {
+          this.resetEncounter(false);
+        }
       }
       this.startAuto();
     });
@@ -389,6 +529,49 @@ class SimulatorHarness {
       const id = lootSelect.value || null;
       this.selectLootTable(id, { persist: true });
       this.resetEncounter(false);
+    });
+
+    const equipSelect = document.getElementById("equipment-recipe-select") as HTMLSelectElement | null;
+    const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
+    const craftEquipBtn = document.getElementById("craft-equipment-button") as HTMLButtonElement | null;
+    const equipEquipBtn = document.getElementById("equip-selected-button") as HTMLButtonElement | null;
+    const craftConsumableBtn = document.getElementById("craft-consumable-button") as HTMLButtonElement | null;
+    const useConsumableBtn = document.getElementById("use-consumable-button") as HTMLButtonElement | null;
+
+    equipSelect?.addEventListener("change", () => this.updateCraftingAvailability());
+    consumableSelect?.addEventListener("change", () => this.updateCraftingAvailability());
+
+    craftEquipBtn?.addEventListener("click", () => {
+      const id = equipSelect?.value;
+      if (id) {
+        this.craftEquipment(id);
+        this.updateCraftingAvailability();
+      }
+    });
+
+    equipEquipBtn?.addEventListener("click", () => {
+      const recipe = equipSelect ? this.recipeMap.get(equipSelect.value) : undefined;
+      if (recipe) {
+        this.equipFromInventory(recipe.result);
+        this.updateCraftingAvailability();
+      }
+    });
+
+    craftConsumableBtn?.addEventListener("click", () => {
+      const id = consumableSelect?.value;
+      if (id) {
+        this.craftConsumable(id);
+        this.updateCraftingAvailability();
+      }
+    });
+
+    useConsumableBtn?.addEventListener("click", () => {
+      const recipe = consumableSelect ? this.recipeMap.get(consumableSelect.value) : undefined;
+      const consumableId = recipe?.result;
+      if (consumableId) {
+        this.useConsumable(consumableId);
+        this.updateCraftingAvailability();
+      }
     });
   }
 
@@ -443,6 +626,53 @@ class SimulatorHarness {
     });
   }
 
+  protected populateRecipeSelects() {
+    const equipSelect = document.getElementById("equipment-recipe-select") as HTMLSelectElement | null;
+    const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
+
+    if (equipSelect) {
+      const previous = equipSelect.value;
+      equipSelect.innerHTML = "";
+      this.recipes
+        .filter((recipe) => recipe.type === "equipment")
+        .forEach((recipe) => {
+          const def = this.itemDefs.get(recipe.result);
+          const option = document.createElement("option");
+          option.value = recipe.id;
+          option.textContent = `${def?.name ?? recipe.result} (${recipe.tier})`;
+          if (previous === recipe.id) {
+            option.selected = true;
+          }
+          equipSelect.appendChild(option);
+        });
+      if (!equipSelect.value && equipSelect.options.length) {
+        equipSelect.selectedIndex = 0;
+      }
+    }
+
+    if (consumableSelect) {
+      const previous = consumableSelect.value;
+      consumableSelect.innerHTML = "";
+      this.recipes
+        .filter((recipe) => recipe.type === "consumable")
+        .forEach((recipe) => {
+          const def = this.itemDefs.get(recipe.result);
+          const option = document.createElement("option");
+          option.value = recipe.id;
+          option.textContent = `${def?.name ?? recipe.result} (${recipe.tier})`;
+          if (previous === recipe.id) {
+            option.selected = true;
+          }
+          consumableSelect.appendChild(option);
+        });
+      if (!consumableSelect.value && consumableSelect.options.length) {
+        consumableSelect.selectedIndex = 0;
+      }
+    }
+
+    this.updateCraftingAvailability();
+  }
+
   protected resetEncounter(freshHero: boolean) {
     if (!this.heroOptions.length) {
       console.warn("[Harness] No hero options available");
@@ -453,9 +683,28 @@ class SimulatorHarness {
       return;
     }
 
+    if (freshHero) {
+      this.history = [];
+      this.historyCounter = 0;
+      this.renderHistory();
+      this.materialsStock = {};
+      this.equippedItems = {
+        MainHand: null,
+        OffHand: null,
+        Head: null,
+        Chest: null,
+      };
+      this.consumables = {};
+      this.equipmentInventory = {};
+      this.totalRewards = createEmptyRewards();
+      this.lastRewards = createEmptyRewards();
+    }
+
     if (this.pendingSourceProgress && this.hero) {
       this.hero.restoreProgress(this.pendingSourceProgress);
       this.pendingSourceProgress = undefined;
+      this.applyEquippedItems();
+      this.renderStatsTable();
     }
 
     const stageSelect = document.getElementById("stage-select") as HTMLSelectElement | null;
@@ -490,7 +739,9 @@ class SimulatorHarness {
     this.lastRewards = this.lastRewards ?? createEmptyRewards();
 
     this.prepareNextWave();
-    this.startNextEncounter(true);
+    this.renderEquipment();
+    this.populateRecipeSelects();
+    this.startNextEncounter(freshHero);
     this.persistState();
   }
 
@@ -503,6 +754,8 @@ class SimulatorHarness {
 
     const preset = this.heroOptions.find((option) => option.id === heroId) ?? this.heroOptions[0];
     this.hero = new Character(this.cloneData(preset.data));
+    this.applyEquippedItems();
+    this.renderStatsTable();
     return true;
   }
 
@@ -621,6 +874,8 @@ class SimulatorHarness {
     this.enemy.resetVitals();
     this.currentEnemyLabel = unit.label;
 
+    this.tryUseConsumables();
+
     this.encounter = new EncounterLoop(this.sim, this.hero, this.enemy, {
       tickInterval: this.tickIntervalSeconds,
       rewardConfig: this.rewardConfig,
@@ -637,8 +892,11 @@ class SimulatorHarness {
       `[Encounter] ${this.currentStageName} — Wave ${this.currentWaveNumber} vs ${unit.label}`
     );
 
-    if (autoStart || this.autoStart) {
+    if (autoStart) {
       this.startAuto();
+    } else {
+      this.running = false;
+      this.updateCraftingAvailability();
     }
   }
 
@@ -647,27 +905,33 @@ class SimulatorHarness {
       return;
     }
 
-    if (this.currentWaveQueue.length) {
-      this.resumeAfterVictory = true;
-      this.startNextEncounter(true);
-      return;
-    }
-
+    this.recordHistoryEntry("Victory", this.encounter?.getSummary() ?? null);
     this.completeWave();
     if (!this.prepareNextWave()) {
       console.log("[Encounter] Stages exhausted.");
+      this.renderHistory();
       this.persistState();
       return;
     }
 
-    this.resumeAfterVictory = true;
-    this.startNextEncounter(true);
+    this.stopAuto();
+    this.encounter = null;
+    this.running = false;
+    this.renderEquipment();
+    this.renderHistory();
+    this.updateCraftingAvailability();
+    this.pushLog(
+      `[Stage] ${this.currentStageName} — wave ${this.currentWaveNumber} ready. Craft or press Start.`
+    );
     this.persistState();
   }
 
   protected handleHeroDefeat() {
     console.log("[Encounter] Hero defeated. Simulation halted.");
+    this.recordHistoryEntry("Defeat", this.encounter?.getSummary() ?? null);
+    this.renderHistory();
     this.stopAuto();
+    this.updateCraftingAvailability();
     this.persistState();
   }
 
@@ -682,6 +946,291 @@ class SimulatorHarness {
       return;
     }
     this.selectLootTable(lootId, { persist: false });
+  }
+
+  protected applyEquippedItems() {
+    if (!this.hero) {
+      return;
+    }
+
+    Object.entries(this.equippedItems).forEach(([slot, itemId]) => {
+      if (!itemId) {
+        return;
+      }
+      const def = this.itemDefs.get(itemId);
+      if (!def) {
+        return;
+      }
+      const equipment = this.createEquipment(def);
+      if (!equipment) {
+        return;
+      }
+      this.hero!.equipItem(equipment);
+    });
+  }
+
+  protected createEquipment(def: ItemDefinition): EquipmentItem | null {
+    if (!def.slot) {
+      return null;
+    }
+    const slotKey = def.slot as keyof typeof EquipmentSlot;
+    const slot = EquipmentSlot[slotKey];
+    if (slot === undefined) {
+      return null;
+    }
+
+    if (def.type === "weapon" && def.weapon) {
+      const stats = new WeaponStatBlock();
+      stats.reset();
+      if (def.stats) {
+        stats.applyDelta(def.stats);
+      }
+      stats.minDamage = def.weapon.minDamage;
+      stats.maxDamage = def.weapon.maxDamage;
+      stats.delay = def.weapon.delay;
+
+      const equipment: EquipmentItem = {
+        id: def.id,
+        name: def.name,
+        description: "",
+        stackSize: 0,
+        type: ItemType.Weapon,
+        stats,
+        slot,
+      };
+      return equipment;
+    }
+
+    if (def.type === "armor") {
+      const stats = new ArmorStatBlock();
+      stats.reset();
+      if (def.stats) {
+        stats.applyDelta(def.stats);
+      }
+      stats.armor = def.armor?.armor ?? 0;
+
+      const equipment: EquipmentItem = {
+        id: def.id,
+        name: def.name,
+        description: "",
+        stackSize: 0,
+        type: ItemType.Armor,
+        stats,
+        slot,
+      };
+      return equipment;
+    }
+
+    return null;
+  }
+
+  protected hasMaterials(cost: Record<string, number> = {}): boolean {
+    return Object.entries(cost).every(
+      ([id, qty]) => (this.materialsStock[id] ?? 0) >= qty
+    );
+  }
+
+  protected consumeMaterials(cost: Record<string, number> = {}) {
+    Object.entries(cost).forEach(([id, qty]) => {
+      this.materialsStock[id] = Math.max(0, (this.materialsStock[id] ?? 0) - qty);
+    });
+    this.updateCraftingAvailability();
+  }
+
+  protected addMaterials(materials: Record<string, number> = {}) {
+    Object.entries(materials).forEach(([id, qty]) => {
+      this.materialsStock[id] = (this.materialsStock[id] ?? 0) + qty;
+    });
+    this.updateCraftingAvailability();
+  }
+
+  protected addEquipmentToInventory(id: string, qty = 1) {
+    this.equipmentInventory[id] = (this.equipmentInventory[id] ?? 0) + qty;
+    this.updateCraftingAvailability();
+  }
+
+  protected removeEquipmentFromInventory(id: string, qty = 1) {
+    const current = this.equipmentInventory[id] ?? 0;
+    this.equipmentInventory[id] = Math.max(0, current - qty);
+    this.updateCraftingAvailability();
+  }
+
+  protected craftEquipment(recipeId: string): boolean {
+    const recipe = this.recipeMap.get(recipeId);
+    if (!recipe || recipe.type !== "equipment") {
+      this.pushLog(`[Craft] Unknown equipment recipe '${recipeId}'.`);
+      return false;
+    }
+    const def = this.itemDefs.get(recipe.result);
+    if (!def || !def.slot) {
+      this.pushLog(`[Craft] Missing definition for '${recipe.result}'.`);
+      return false;
+    }
+    if (!this.hasMaterials(recipe.cost)) {
+      this.pushLog(`[Craft] Not enough materials for ${def.name}.`);
+      return false;
+    }
+    const equipment = this.createEquipment(def);
+    if (!equipment) {
+      this.pushLog(`[Craft] Cannot forge ${def.name}.`);
+      return false;
+    }
+    this.consumeMaterials(recipe.cost);
+    this.addEquipmentToInventory(def.id);
+    this.pushLog(`[Craft] Forged ${def.name}.`);
+    const slotKey = def.slot as keyof typeof this.equippedItems;
+    if (!this.equippedItems[slotKey]) {
+      this.equipFromInventory(def.id);
+    } else {
+      this.renderEquipment();
+      this.persistState();
+    }
+    return true;
+  }
+
+  protected craftConsumable(recipeId: string): boolean {
+    const recipe = this.recipeMap.get(recipeId);
+    if (!recipe || recipe.type !== "consumable") {
+      this.pushLog(`[Craft] Unknown consumable recipe '${recipeId}'.`);
+      return false;
+    }
+    if (!this.hasMaterials(recipe.cost)) {
+      this.pushLog(`[Craft] Not enough materials for ${recipe.result}.`);
+      return false;
+    }
+    const def = this.itemDefs.get(recipe.result);
+    this.consumeMaterials(recipe.cost);
+    this.consumables[recipe.result] = (this.consumables[recipe.result] ?? 0) + 1;
+    this.pushLog(`[Craft] Prepared ${def?.name ?? recipe.result}.`);
+    this.renderEquipment();
+    this.persistState();
+    return true;
+  }
+
+  protected equipFromInventory(itemId: string): boolean {
+    if (!this.hero) {
+      this.pushLog(`[Equip] No hero to equip ${itemId}.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+    const def = this.itemDefs.get(itemId);
+    if (!def || !def.slot) {
+      this.pushLog(`[Equip] Unknown equipment '${itemId}'.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+    if ((this.equipmentInventory[itemId] ?? 0) <= 0) {
+      this.pushLog(`[Equip] ${def.name} not in inventory.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+    const equipment = this.createEquipment(def);
+    if (!equipment) {
+      this.pushLog(`[Equip] Cannot equip ${def.name}.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+    const slotKey = def.slot as keyof typeof this.equippedItems;
+    const previous = this.hero.equipItem(equipment) as EquipmentItem | undefined;
+    this.removeEquipmentFromInventory(itemId);
+    if (previous && previous.id) {
+      this.addEquipmentToInventory(previous.id);
+    }
+    this.equippedItems[slotKey] = def.id;
+    this.pushLog(`[Equip] ${def.name} equipped.`);
+    this.renderStatsTable();
+    this.renderEquipment();
+    this.persistState();
+    this.updateCraftingAvailability();
+    return true;
+  }
+
+  protected useConsumable(consumableId: string): boolean {
+    if (!this.hero) {
+      return false;
+    }
+    if ((this.consumables[consumableId] ?? 0) <= 0) {
+      this.pushLog(`[Consumable] ${consumableId} not available.`);
+      return false;
+    }
+    const def = this.itemDefs.get(consumableId);
+    if (!def || !def.effect || def.effect.kind !== "heal") {
+      this.pushLog(`[Consumable] ${consumableId} cannot be used.`);
+      return false;
+    }
+    this.consumables[consumableId] = Math.max(0, (this.consumables[consumableId] ?? 0) - 1);
+    this.hero.healPercent(def.effect.percent ?? 0.5);
+    this.pushLog(
+      `[Consumable] Hero uses ${def.name ?? consumableId} (+${Math.round((def.effect.percent ?? 0.5) * 100)}% HP)`
+    );
+    this.renderStatsTable();
+    this.renderEquipment();
+    this.persistState();
+    this.updateCraftingAvailability();
+    return true;
+  }
+
+  protected recordHistoryEntry(
+    result: "Victory" | "Defeat",
+    summary: EncounterSummary | null
+  ) {
+    if (!summary) {
+      return;
+    }
+
+    const heroHp = this.hero
+      ? `${Math.round(this.hero.health)} / ${Math.round(this.hero.maxHealth)}`
+      : "-";
+    const enemyHp = this.enemy
+      ? `${Math.round(this.enemy.health)} / ${Math.round(this.enemy.maxHealth)}`
+      : "-";
+
+    const rewards = summary.rewards
+      ? {
+          xp: summary.rewards.xp,
+          gold: summary.rewards.gold,
+          materials: { ...(summary.rewards.materials ?? {}) },
+        }
+      : createEmptyRewards();
+
+    const entry: EncounterHistoryEntry = {
+      index: ++this.historyCounter,
+      stage: this.currentStageName || "-",
+      wave: this.currentWaveNumber,
+      opponent: this.currentEnemyLabel || "-",
+      result,
+      heroHP: heroHp,
+      enemyHP: enemyHp,
+      rewards,
+    };
+
+    this.history.push(entry);
+    if (this.history.length > 100) {
+      this.history.splice(0, this.history.length - 100);
+    }
+  }
+
+  protected tryUseConsumables() {
+    if (!this.hero) {
+      return;
+    }
+
+    const hpRatio = this.hero.health / this.hero.maxHealth;
+    if (hpRatio >= 0.6) {
+      return;
+    }
+
+    const potionId = this.consumables["greater-healing-potion"]
+      ? "greater-healing-potion"
+      : this.consumables["healing-potion"]
+      ? "healing-potion"
+      : null;
+
+    if (!potionId) {
+      return;
+    }
+
+    this.useConsumable(potionId);
   }
 
   protected selectLootTable(id: string | null, options: { persist?: boolean } = {}) {
@@ -725,6 +1274,7 @@ class SimulatorHarness {
     if (!this.encounter) {
       return;
     }
+    this.encounter.setTickInterval(this.tickIntervalSeconds);
     this.encounter.start();
     this.running = true;
     this.lastTimestamp = performance.now();
@@ -841,21 +1391,20 @@ class SimulatorHarness {
         (this.totalRewards.materials[id] ?? 0) + qty;
     });
 
+    this.addMaterials(rewards.materials ?? {});
+
     if (this.hero && rewards.xp > 0) {
       const levels = this.hero.addExperience(rewards.xp);
       if (levels > 0) {
         this.renderStatsTable();
+        this.renderEquipment();
       }
     }
 
     this.rewardClaimed = true;
     this.renderRewards();
+    this.renderEquipment();
     this.persistState();
-
-    if (this.resumeAfterVictory) {
-      this.resumeAfterVictory = false;
-      this.startNextEncounter(true);
-    }
   }
 
   protected refreshStatus(force = false) {
@@ -981,6 +1530,45 @@ class SimulatorHarness {
     });
   }
 
+  protected renderHistory() {
+    const table = document.getElementById("history-table");
+    if (!table) {
+      return;
+    }
+
+    table.innerHTML = "";
+    const entries = this.history.slice(-30).reverse();
+    if (!entries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.textContent = "No encounters yet";
+      td.colSpan = 8;
+      tr.appendChild(td);
+      table.appendChild(tr);
+      return;
+    }
+
+    entries.forEach((entry) => {
+      const tr = document.createElement("tr");
+      const cells = [
+        `#${entry.index}`,
+        entry.stage,
+        `${entry.wave}`,
+        entry.opponent,
+        entry.result,
+        entry.heroHP,
+        entry.enemyHP,
+        this.formatHistoryRewards(entry.rewards),
+      ];
+      cells.forEach((value) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+  }
+
   protected renderStatsTable() {
     const table = document.getElementById("stats-table");
     if (!table) {
@@ -1011,6 +1599,124 @@ class SimulatorHarness {
       row.appendChild(td);
       table.appendChild(row);
     });
+  }
+
+  protected renderEquipment() {
+    const equipTable = document.getElementById("equipment-table");
+    const inventoryTable = document.getElementById("inventory-table");
+    const materialsTable = document.getElementById("materials-table");
+    const consumablesTable = document.getElementById("consumables-table");
+
+    if (equipTable) {
+      equipTable.innerHTML = "";
+      const slots: Array<keyof typeof this.equippedItems> = [
+        "MainHand",
+        "OffHand",
+        "Head",
+        "Chest",
+      ];
+      slots.forEach((slot) => {
+        const itemId = this.equippedItems[slot];
+        const def = itemId ? this.itemDefs.get(itemId) : undefined;
+        const tr = document.createElement("tr");
+        const slotTd = document.createElement("td");
+        slotTd.textContent = slot;
+        const itemTd = document.createElement("td");
+        itemTd.textContent = def ? def.name : "-";
+        tr.appendChild(slotTd);
+        tr.appendChild(itemTd);
+        equipTable.appendChild(tr);
+      });
+    }
+
+    if (inventoryTable) {
+      inventoryTable.innerHTML = "";
+      const entries = Object.entries(this.equipmentInventory).filter(([, qty]) => qty > 0);
+      if (!entries.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 3;
+        td.textContent = "-";
+        tr.appendChild(td);
+        inventoryTable.appendChild(tr);
+      } else {
+        entries
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .forEach(([id, qty]) => {
+            const def = this.itemDefs.get(id);
+            const tr = document.createElement("tr");
+            const nameTd = document.createElement("td");
+            nameTd.textContent = def?.name ?? id;
+            const qtyTd = document.createElement("td");
+            qtyTd.textContent = `${qty}`;
+            const actionTd = document.createElement("td");
+            const button = document.createElement("button");
+            button.textContent = "Equip";
+            button.disabled = !this.hero || !def || (def.type !== "weapon" && def.type !== "armor");
+            button.addEventListener("click", () => {
+              this.equipFromInventory(id);
+            });
+            actionTd.appendChild(button);
+            tr.appendChild(nameTd);
+            tr.appendChild(qtyTd);
+            tr.appendChild(actionTd);
+            inventoryTable.appendChild(tr);
+          });
+      }
+    }
+
+    if (materialsTable) {
+      materialsTable.innerHTML = "";
+      const entries = Object.entries(this.materialsStock).sort((a, b) => a[0].localeCompare(b[0]));
+      if (!entries.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.textContent = "-";
+        tr.appendChild(td);
+        materialsTable.appendChild(tr);
+      } else {
+        entries.forEach(([id, qty]) => {
+          const tr = document.createElement("tr");
+          const idTd = document.createElement("td");
+          idTd.textContent = id;
+          const qtyTd = document.createElement("td");
+          qtyTd.textContent = `${qty}`;
+          tr.appendChild(idTd);
+          tr.appendChild(qtyTd);
+          materialsTable.appendChild(tr);
+        });
+      }
+    }
+
+    if (consumablesTable) {
+      consumablesTable.innerHTML = "";
+      const entries = Object.entries(this.consumables).filter(([, qty]) => qty > 0);
+      if (!entries.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 2;
+        td.textContent = "-";
+        tr.appendChild(td);
+        consumablesTable.appendChild(tr);
+      } else {
+        entries
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .forEach(([id, qty]) => {
+            const def = this.itemDefs.get(id);
+            const tr = document.createElement("tr");
+            const idTd = document.createElement("td");
+            idTd.textContent = def?.name ?? id;
+            const qtyTd = document.createElement("td");
+            qtyTd.textContent = `${qty}`;
+            tr.appendChild(idTd);
+            tr.appendChild(qtyTd);
+            consumablesTable.appendChild(tr);
+          });
+      }
+    }
+
+    this.updateCraftingAvailability();
   }
 
   protected collectStatNames(character: Character): string[] {
@@ -1064,6 +1770,21 @@ class SimulatorHarness {
       .join(", ");
   }
 
+  protected formatHistoryRewards(rewards: EncounterRewards): string {
+    const parts: string[] = [];
+    if (rewards.xp) {
+      parts.push(`XP ${rewards.xp}`);
+    }
+    if (rewards.gold) {
+      parts.push(`Gold ${rewards.gold}`);
+    }
+    const mats = this.formatMaterials(rewards.materials ?? {});
+    if (mats) {
+      parts.push(mats);
+    }
+    return parts.length ? parts.join("; ") : "-";
+  }
+
   protected pushLog(entry: string) {
     const logNode = document.getElementById("log-output");
     if (!logNode) {
@@ -1077,6 +1798,33 @@ class SimulatorHarness {
     const statusNode = document.getElementById("status-text");
     if (statusNode) {
       statusNode.textContent = message;
+    }
+  }
+
+  protected updateCraftingAvailability() {
+    const equipSelect = document.getElementById("equipment-recipe-select") as HTMLSelectElement | null;
+    const equipCraftBtn = document.getElementById("craft-equipment-button") as HTMLButtonElement | null;
+    const equipEquipBtn = document.getElementById("equip-selected-button") as HTMLButtonElement | null;
+    const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
+    const consumableCraftBtn = document.getElementById("craft-consumable-button") as HTMLButtonElement | null;
+    const consumableUseBtn = document.getElementById("use-consumable-button") as HTMLButtonElement | null;
+
+    const equipRecipe = equipSelect ? this.recipeMap.get(equipSelect.value) : undefined;
+    if (equipCraftBtn) {
+      equipCraftBtn.disabled = !equipRecipe || !this.hasMaterials(equipRecipe.cost);
+    }
+    if (equipEquipBtn) {
+      const resultId = equipRecipe?.result ?? null;
+      equipEquipBtn.disabled = !resultId || (this.equipmentInventory[resultId] ?? 0) <= 0;
+    }
+
+    const consumableRecipe = consumableSelect ? this.recipeMap.get(consumableSelect.value) : undefined;
+    const consumableResult = consumableRecipe ? consumableRecipe.result : null;
+    if (consumableCraftBtn) {
+      consumableCraftBtn.disabled = !consumableRecipe || !this.hasMaterials(consumableRecipe.cost);
+    }
+    if (consumableUseBtn) {
+      consumableUseBtn.disabled = !consumableResult || (this.consumables[consumableResult] ?? 0) <= 0;
     }
   }
 
@@ -1100,6 +1848,12 @@ class SimulatorHarness {
         rewards: this.totalRewards,
         lastRewards: this.lastRewards,
         heroProgress: this.hero.serializeProgress(),
+        history: this.history.slice(-40),
+        historyCounter: this.historyCounter,
+        materialsStock: this.materialsStock,
+        equippedItems: this.equippedItems,
+        consumables: this.consumables,
+        equipmentInventory: this.equipmentInventory,
         timestamp: Date.now(),
       };
 
@@ -1109,15 +1863,15 @@ class SimulatorHarness {
     }
   }
 
-  protected restoreState() {
+  protected restoreState(): boolean {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        return;
+        return false;
       }
       const state = JSON.parse(raw) as PersistedState;
       if (!state || state.version !== 1) {
-        return;
+        return false;
       }
 
       const heroSelect = document.getElementById("hero-select") as HTMLSelectElement | null;
@@ -1151,8 +1905,23 @@ class SimulatorHarness {
       this.lastRewards = state.lastRewards ?? createEmptyRewards();
 
       this.pendingSourceProgress = state.heroProgress;
+      this.history = state.history ? state.history.slice(-40) : [];
+      this.historyCounter = state.historyCounter ?? this.history.length;
+      this.renderHistory();
+      this.materialsStock = { ...(state.materialsStock ?? {}) };
+      this.equippedItems = {
+        MainHand: null,
+        OffHand: null,
+        Head: null,
+        Chest: null,
+        ...(state.equippedItems ?? {}),
+      };
+      this.consumables = { ...(state.consumables ?? {}) };
+      this.equipmentInventory = { ...(state.equipmentInventory ?? {}) };
+      return true;
     } catch (err) {
       console.warn("[Harness] Failed to restore state", err);
+      return false;
     }
   }
 

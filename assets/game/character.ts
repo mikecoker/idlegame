@@ -455,6 +455,16 @@ export class Character {
     // event
   }
 
+  heal(amount: number) {
+    const heal = Math.abs(amount);
+    this._curHealth = Math.min(this._maxHealth, this._curHealth + heal);
+  }
+
+  healPercent(percent: number) {
+    const clamped = Math.max(0, percent);
+    this.heal(this._maxHealth * clamped);
+  }
+
   public getAttackDelaySeconds(hand: "main" | "off" = "main"): number {
     const slot = hand === "main" ? EquipmentSlot.MainHand : EquipmentSlot.OffHand;
     const weapon = this.getWeapon(slot);

@@ -1,0 +1,39 @@
+{
+  "stages": [
+    {
+      "index": 0,
+      "label": "Town",
+      "healing": 0.5,
+      "materials": {},
+      "recipes": ["rusty-sword", "leather-cap", "leather-vest", "healing-potion"]
+    },
+    {
+      "index": 1,
+      "label": "Camp",
+      "healing": 0.4,
+      "materials": {},
+      "recipes": ["steel-sword", "chain-helm", "chain-mail", "healing-potion"]
+    },
+    {
+      "index": 2,
+      "label": "Forge",
+      "healing": 0.3,
+      "materials": {"enchanted-ore": 2},
+      "recipes": ["steel-sword", "chain-helm", "chain-mail", "greater-healing-potion"]
+    },
+    {
+      "index": 3,
+      "label": "Sanctum",
+      "healing": 0.5,
+      "materials": {"mana-crystal": 1},
+      "recipes": ["dragonslayer-sword", "mythic-helm", "mythic-plate", "greater-healing-potion"]
+    },
+    {
+      "index": 4,
+      "label": "Citadel",
+      "healing": 0.5,
+      "materials": {"ancient-cloth": 2},
+      "recipes": ["dragonslayer-sword", "mythic-helm", "mythic-plate", "greater-healing-potion"]
+    }
+  ]
+}

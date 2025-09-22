@@ -11,7 +11,7 @@ const sourceDir = resolve("assets/data");
 const distRoot = resolve("web/dist");
 const dataDir = join(distRoot, "assets/data");
 const manifestPath = join(distRoot, "assets/presets.json");
-const directoriesToMirror = ["enemies", "loot", "encounters"];
+const directoriesToMirror = ["enemies", "loot", "encounters", "items", "crafting"];
 
 function toLabel(id) {
   return id

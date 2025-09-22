@@ -1,0 +1,15 @@
+{
+  "items": [
+    { "id": "rusty-sword", "path": "assets/data/items/rusty-sword.json" },
+    { "id": "leather-cap", "path": "assets/data/items/leather-cap.json" },
+    { "id": "leather-vest", "path": "assets/data/items/leather-vest.json" },
+    { "id": "steel-sword", "path": "assets/data/items/steel-sword.json" },
+    { "id": "chain-helm", "path": "assets/data/items/chain-helm.json" },
+    { "id": "chain-mail", "path": "assets/data/items/chain-mail.json" },
+    { "id": "dragonslayer-sword", "path": "assets/data/items/dragonslayer-sword.json" },
+    { "id": "mythic-helm", "path": "assets/data/items/mythic-helm.json" },
+    { "id": "mythic-plate", "path": "assets/data/items/mythic-plate.json" },
+    { "id": "healing-potion", "path": "assets/data/items/healing-potion.json" },
+    { "id": "greater-healing-potion", "path": "assets/data/items/greater-healing-potion.json" }
+  ]
+}

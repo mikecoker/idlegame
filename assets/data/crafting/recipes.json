@@ -1,0 +1,113 @@
+{
+  "recipes": [
+    {
+      "id": "rusty-sword",
+      "result": "rusty-sword",
+      "type": "equipment",
+      "tier": "small",
+      "cost": {
+        "iron-ore": 5
+      }
+    },
+    {
+      "id": "leather-cap",
+      "result": "leather-cap",
+      "type": "equipment",
+      "tier": "small",
+      "cost": {
+        "leather": 4
+      }
+    },
+    {
+      "id": "leather-vest",
+      "result": "leather-vest",
+      "type": "equipment",
+      "tier": "small",
+      "cost": {
+        "leather": 6,
+        "iron-ore": 2
+      }
+    },
+    {
+      "id": "steel-sword",
+      "result": "steel-sword",
+      "type": "equipment",
+      "tier": "medium",
+      "cost": {
+        "iron-ore": 14,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "id": "chain-helm",
+      "result": "chain-helm",
+      "type": "equipment",
+      "tier": "medium",
+      "cost": {
+        "iron-ore": 8,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "id": "chain-mail",
+      "result": "chain-mail",
+      "type": "equipment",
+      "tier": "medium",
+      "cost": {
+        "iron-ore": 12,
+        "ancient-cloth": 2
+      }
+    },
+    {
+      "id": "dragonslayer-sword",
+      "result": "dragonslayer-sword",
+      "type": "equipment",
+      "tier": "boss",
+      "cost": {
+        "enchanted-ore": 6,
+        "mana-crystal": 3
+      }
+    },
+    {
+      "id": "mythic-helm",
+      "result": "mythic-helm",
+      "type": "equipment",
+      "tier": "boss",
+      "cost": {
+        "enchanted-ore": 4,
+        "ancient-cloth": 4
+      }
+    },
+    {
+      "id": "mythic-plate",
+      "result": "mythic-plate",
+      "type": "equipment",
+      "tier": "boss",
+      "cost": {
+        "enchanted-ore": 6,
+        "ancient-cloth": 6,
+        "mana-crystal": 2
+      }
+    },
+    {
+      "id": "healing-potion",
+      "result": "healing-potion",
+      "type": "consumable",
+      "tier": "small",
+      "cost": {
+        "iron-ore": 2,
+        "leather": 1
+      }
+    },
+    {
+      "id": "greater-healing-potion",
+      "result": "greater-healing-potion",
+      "type": "consumable",
+      "tier": "boss",
+      "cost": {
+        "ancient-cloth": 2,
+        "mana-crystal": 2
+      }
+    }
+  ]
+}

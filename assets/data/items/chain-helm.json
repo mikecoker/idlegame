@@ -1,0 +1,15 @@
+{
+  "id": "chain-helm",
+  "name": "Chain Coif",
+  "tier": "medium",
+  "type": "armor",
+  "slot": "Head",
+  "power": 18,
+  "stats": {
+    "defense": 8,
+    "strength": 1
+  },
+  "armor": {
+    "armor": 16
+  }
+}

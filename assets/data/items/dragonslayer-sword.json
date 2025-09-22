@@ -1,0 +1,17 @@
+{
+  "id": "dragonslayer-sword",
+  "name": "Dragonslayer Blade",
+  "tier": "boss",
+  "type": "weapon",
+  "slot": "MainHand",
+  "power": 35,
+  "stats": {
+    "strength": 8,
+    "dexterity": 4
+  },
+  "weapon": {
+    "minDamage": 28,
+    "maxDamage": 44,
+    "delay": 1.8
+  }
+}

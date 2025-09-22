@@ -1,0 +1,15 @@
+{
+  "id": "chain-mail",
+  "name": "Chain Mail",
+  "tier": "medium",
+  "type": "armor",
+  "slot": "Chest",
+  "power": 20,
+  "stats": {
+    "defense": 12,
+    "stamina": 4
+  },
+  "armor": {
+    "armor": 24
+  }
+}
