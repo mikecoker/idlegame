@@ -1,5 +1,32 @@
 import { CombatSim, AttackOutcome } from "./combatsim";
 import { Character } from "./character";
+import { ItemRarity } from "./item";
+
+export interface LootEquipmentDrop {
+  itemId: string;
+  chance: number;
+  min?: number;
+  max?: number;
+  rarityWeights?: Partial<Record<ItemRarity, number>>;
+}
+
+export interface LootAugmentDrop {
+  augmentId: string;
+  chance: number;
+  min?: number;
+  max?: number;
+}
+
+export interface RewardEquipmentItem {
+  itemId: string;
+  rarity: ItemRarity;
+  quantity: number;
+}
+
+export interface RewardAugmentItem {
+  augmentId: string;
+  quantity: number;
+}
 
 export interface EncounterConfig {
   tickInterval: number;
@@ -21,12 +48,16 @@ export interface EncounterRewardConfig {
   goldMin?: number;
   goldMax?: number;
   materialDrops?: Array<{ id: string; chance: number; min: number; max: number }>;
+  equipmentDrops?: LootEquipmentDrop[];
+  augmentDrops?: LootAugmentDrop[];
 }
 
 export interface EncounterRewards {
   xp: number;
   gold: number;
   materials: Record<string, number>;
+  equipment: RewardEquipmentItem[];
+  augments: RewardAugmentItem[];
 }
 
 export interface EncounterEvent extends AttackOutcome {
@@ -61,6 +92,8 @@ export class EncounterLoop {
     xp: 0,
     gold: 0,
     materials: {},
+    equipment: [],
+    augments: [],
   };
 
   constructor(
@@ -80,6 +113,8 @@ export class EncounterLoop {
       goldMin: config?.rewardConfig?.goldMin ?? 0,
       goldMax: config?.rewardConfig?.goldMax ?? 0,
       materialDrops: config?.rewardConfig?.materialDrops ?? [],
+      equipmentDrops: config?.rewardConfig?.equipmentDrops ?? [],
+      augmentDrops: config?.rewardConfig?.augmentDrops ?? [],
     };
   }
 
@@ -230,6 +265,8 @@ export class EncounterLoop {
       xp: config.xpPerWin ?? 0,
       gold: this.rollGold(config.goldMin, config.goldMax),
       materials: {},
+      equipment: [],
+      augments: [],
     };
     if (Array.isArray(config.materialDrops)) {
       config.materialDrops.forEach((drop) => {
@@ -237,6 +274,30 @@ export class EncounterLoop {
           const qty = this.randRange(drop.min, drop.max);
           if (qty > 0) {
             rewards.materials[drop.id] = (rewards.materials[drop.id] ?? 0) + qty;
+          }
+        }
+      });
+    }
+
+    if (Array.isArray(config.equipmentDrops)) {
+      config.equipmentDrops.forEach((drop) => {
+        if (Math.random() <= drop.chance) {
+          const qty = this.randRange(Math.max(1, drop.min ?? 1), Math.max(1, drop.max ?? drop.min ?? 1));
+          if (qty <= 0) {
+            return;
+          }
+          const rarity = this.pickEquipmentRarity(drop.rarityWeights);
+          this.pushEquipmentReward(rewards.equipment, drop.itemId, rarity, qty);
+        }
+      });
+    }
+
+    if (Array.isArray(config.augmentDrops)) {
+      config.augmentDrops.forEach((drop) => {
+        if (Math.random() <= drop.chance) {
+          const qty = this.randRange(Math.max(1, drop.min ?? 1), Math.max(1, drop.max ?? drop.min ?? 1));
+          if (qty > 0) {
+            this.pushAugmentReward(rewards.augments, drop.augmentId, qty);
           }
         }
       });
@@ -258,5 +319,56 @@ export class EncounterLoop {
       return Math.floor(min);
     }
     return Math.floor(Math.random() * (max - min + 1)) + Math.floor(min);
+  }
+
+  protected pickEquipmentRarity(weights?: Partial<Record<ItemRarity, number>>): ItemRarity {
+    const table: Record<ItemRarity, number> = {
+      common: 1,
+      uncommon: 0,
+      rare: 0,
+      epic: 0,
+      legendary: 0,
+    };
+    if (weights) {
+      Object.entries(weights).forEach(([key, value]) => {
+        const rarity = key as ItemRarity;
+        if (table[rarity] !== undefined && Number.isFinite(value)) {
+          table[rarity] = Math.max(0, Number(value));
+        }
+      });
+    }
+
+    const total = Object.values(table).reduce((sum, val) => sum + val, 0);
+    if (total <= 0) {
+      return "common";
+    }
+
+    const roll = Math.random() * total;
+    let accumulator = 0;
+    for (const [rarity, weight] of Object.entries(table) as Array<[ItemRarity, number]>) {
+      accumulator += weight;
+      if (roll <= accumulator) {
+        return rarity;
+      }
+    }
+    return "common";
+  }
+
+  protected pushEquipmentReward(collection: RewardEquipmentItem[], itemId: string, rarity: ItemRarity, qty: number) {
+    const existing = collection.find((entry) => entry.itemId === itemId && entry.rarity === rarity);
+    if (existing) {
+      existing.quantity += qty;
+    } else {
+      collection.push({ itemId, rarity, quantity: qty });
+    }
+  }
+
+  protected pushAugmentReward(collection: RewardAugmentItem[], augmentId: string, qty: number) {
+    const existing = collection.find((entry) => entry.augmentId === augmentId);
+    if (existing) {
+      existing.quantity += qty;
+    } else {
+      collection.push({ augmentId, quantity: qty });
+    }
   }
 }

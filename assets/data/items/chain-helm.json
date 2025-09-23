@@ -11,5 +11,26 @@
   },
   "armor": {
     "armor": 16
-  }
+  },
+  "socketSlots": 1,
+  "upgrades": [
+    {
+      "materials": {
+        "armor-essence": 3,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 5,
+        "ancient-cloth": 3
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 7,
+        "mana-crystal": 2
+      }
+    }
+  ]
 }

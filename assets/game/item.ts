@@ -1,6 +1,8 @@
 import { EquipmentSlot, ItemType } from "./constants";
 import { ArmorStatBlock, StatBlock, WeaponStatBlock } from "./stat";
 
+export type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
 export class Item {
   public id: string;
   public type: ItemType;
@@ -12,6 +14,16 @@ export class Item {
 export class EquipmentItem extends Item {
   public stats: StatBlock;
   public slot: EquipmentSlot;
+  public rarity: ItemRarity = "common";
+  public upgradeLevel = 0;
+  public maxUpgradeLevel = 0;
+  public socketSlots = 0;
+  public augments: string[] = [];
+}
+
+export interface EquipmentUpgradeTier {
+  level: number;
+  materials: Record<string, number>;
 }
 export class WeaponItem extends EquipmentItem {
   public weaponStats: WeaponStatBlock;

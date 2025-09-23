@@ -11,5 +11,10 @@
   },
   "armor": {
     "armor": 12
-  }
+  },
+  "socketSlots": 1,
+  "upgrades": [
+    { "materials": { "armor-essence": 3 } },
+    { "materials": { "armor-essence": 4, "leather": 6 } }
+  ]
 }

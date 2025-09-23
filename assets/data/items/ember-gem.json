@@ -1,0 +1,12 @@
+{
+  "id": "ember-gem",
+  "name": "Ember Gem",
+  "tier": "small",
+  "type": "augment",
+  "augment": {
+    "stats": {
+      "strength": 2,
+      "dexterity": 1
+    }
+  }
+}

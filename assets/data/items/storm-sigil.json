@@ -1,0 +1,12 @@
+{
+  "id": "storm-sigil",
+  "name": "Storm Sigil",
+  "tier": "boss",
+  "type": "augment",
+  "augment": {
+    "stats": {
+      "agility": 3,
+      "dexterity": 2
+    }
+  }
+}

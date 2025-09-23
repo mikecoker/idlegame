@@ -10,6 +10,9 @@
     { "id": "mythic-helm", "path": "assets/data/items/mythic-helm.json" },
     { "id": "mythic-plate", "path": "assets/data/items/mythic-plate.json" },
     { "id": "healing-potion", "path": "assets/data/items/healing-potion.json" },
-    { "id": "greater-healing-potion", "path": "assets/data/items/greater-healing-potion.json" }
+    { "id": "greater-healing-potion", "path": "assets/data/items/greater-healing-potion.json" },
+    { "id": "ember-gem", "path": "assets/data/items/ember-gem.json" },
+    { "id": "glacial-core", "path": "assets/data/items/glacial-core.json" },
+    { "id": "storm-sigil", "path": "assets/data/items/storm-sigil.json" }
   ]
 }

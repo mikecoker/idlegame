@@ -13,5 +13,26 @@
     "minDamage": 16,
     "maxDamage": 26,
     "delay": 2.0
-  }
+  },
+  "upgrades": [
+    {
+      "materials": {
+        "weapon-essence": 3,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "materials": {
+        "weapon-essence": 5,
+        "enchanted-ore": 4,
+        "ancient-cloth": 2
+      }
+    },
+    {
+      "materials": {
+        "weapon-essence": 8,
+        "mana-crystal": 2
+      }
+    }
+  ]
 }

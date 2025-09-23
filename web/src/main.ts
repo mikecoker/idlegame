@@ -5,13 +5,17 @@ import {
   EncounterLoop,
   EncounterRewardConfig,
   EncounterSummary,
+  EncounterRewards,
+  RewardAugmentItem,
+  RewardEquipmentItem,
 } from "../../assets/game/encounter";
 import { EquipmentSlot, ItemType } from "../../assets/game/constants";
-import { EquipmentItem } from "../../assets/game/item";
+import { EquipmentItem, ItemRarity } from "../../assets/game/item";
 import {
   StatBlock,
   WeaponStatBlock,
   ArmorStatBlock,
+  StatBlockData,
 } from "../../assets/game/stat";
 
 interface Preset {
@@ -73,7 +77,7 @@ interface ItemDefinition {
   id: string;
   name: string;
   tier: string;
-  type: "weapon" | "armor" | "consumable";
+  type: "weapon" | "armor" | "consumable" | "augment";
   slot?: string;
   power?: number;
   stats?: Partial<Record<keyof CharacterData["baseStats"], number>>;
@@ -89,7 +93,27 @@ interface ItemDefinition {
     kind: "heal";
     percent: number;
   };
+  socketSlots?: number;
+  maxUpgradeLevel?: number;
+  augment?: {
+    stats?: Partial<Record<keyof CharacterData["baseStats"], number>>;
+  };
+  upgrades?: Array<{
+    materials: Record<string, number>;
+  }>;
 }
+
+interface OwnedEquipment {
+  instanceId: string;
+  itemId: string;
+  rarity: ItemRarity;
+  upgradeLevel: number;
+  maxUpgradeLevel: number;
+  socketSlots: number;
+  augments: string[];
+}
+
+type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
 
 interface CraftingRecipe {
   id: string;
@@ -116,6 +140,8 @@ interface PersistedState {
   equippedItems?: Record<string, string | null>;
   consumables?: Record<string, number>;
   equipmentInventory?: Record<string, number>;
+  equippedItemsV2?: Record<string, OwnedEquipment | null>;
+  equipmentInventoryV2?: OwnedEquipment[];
   timestamp: number;
 }
 
@@ -130,12 +156,6 @@ interface EncounterHistoryEntry {
   rewards: EncounterRewards;
 }
 
-interface EncounterRewards {
-  xp: number;
-  gold: number;
-  materials: Record<string, number>;
-}
-
 const HERO_SOURCES = [
   { id: "hero", label: "Hero", path: "dist/assets/data/hero.json" },
   { id: "rogue", label: "Rogue", path: "dist/assets/data/rogue.json" },
@@ -143,6 +163,33 @@ const HERO_SOURCES = [
 ];
 
 const STORAGE_KEY = "idle-eq-harness-state-v2";
+const RARITY_MULTIPLIERS: Record<ItemRarity, number> = {
+  common: 1,
+  uncommon: 1.1,
+  rare: 1.25,
+  epic: 1.4,
+  legendary: 1.6,
+};
+
+const SALVAGE_VALUE_BY_RARITY: Record<ItemRarity, number> = {
+  common: 1,
+  uncommon: 2,
+  rare: 4,
+  epic: 7,
+  legendary: 12,
+};
+
+const UPGRADE_SCALE_PER_LEVEL = 0.05;
+const STAT_DATA_KEYS: Array<keyof StatBlock> = [
+  "strength",
+  "agility",
+  "dexterity",
+  "stamina",
+  "intelligence",
+  "wisdom",
+  "charisma",
+  "defense",
+];
 
 function createTelemetryBucket(): CombatTelemetry {
   return {
@@ -161,7 +208,35 @@ function createEmptyRewards(): EncounterRewards {
     xp: 0,
     gold: 0,
     materials: {},
+    equipment: [],
+    augments: [],
   };
+}
+
+function normalizeRewards(raw?: EncounterRewards | null): EncounterRewards {
+  if (!raw) {
+    return createEmptyRewards();
+  }
+  return {
+    xp: raw.xp ?? 0,
+    gold: raw.gold ?? 0,
+    materials: { ...(raw.materials ?? {}) },
+    equipment: raw.equipment ? raw.equipment.map((entry) => ({ ...entry })) : [],
+    augments: raw.augments ? raw.augments.map((entry) => ({ ...entry })) : [],
+  };
+}
+
+function getRarityMultiplier(rarity: ItemRarity): number {
+  return RARITY_MULTIPLIERS[rarity] ?? 1;
+}
+
+function scaleStatBlockValues(block: StatBlock, multiplier: number) {
+  STAT_DATA_KEYS.forEach((key) => {
+    const current = block[key];
+    if (typeof current === "number") {
+      block[key] = Math.round(current * multiplier) as any;
+    }
+  });
 }
 
 function clamp01(value: number): number {
@@ -197,17 +272,22 @@ class SimulatorHarness {
   protected currentWaveQueue: EnemyUnit[] = [];
 
   protected lootTables: LootTableRecord[] = [];
-  protected rewardConfig: EncounterRewardConfig = { xpPerWin: 0 };
+  protected rewardConfig: EncounterRewardConfig = {
+    xpPerWin: 0,
+    equipmentDrops: [],
+    augmentDrops: [],
+    materialDrops: [],
+  };
   protected selectedLootId: string | null = null;
   protected materialsStock: Record<string, number> = {};
-  protected equippedItems: Record<string, string | null> = {
+  protected equippedItems: Record<EquippedSlotKey, OwnedEquipment | null> = {
     MainHand: null,
     OffHand: null,
     Head: null,
     Chest: null,
   };
   protected consumables: Record<string, number> = {};
-  protected equipmentInventory: Record<string, number> = {};
+  protected equipmentInventory: OwnedEquipment[] = [];
 
   protected telemetry = {
     hero: createTelemetryBucket(),
@@ -464,6 +544,19 @@ class SimulatorHarness {
               min: Math.max(0, Math.floor(drop.min ?? 0)),
               max: Math.max(0, Math.floor(drop.max ?? drop.min ?? 0)),
             })),
+            equipmentDrops: (table.equipmentDrops ?? []).map((drop: any) => ({
+              itemId: drop.itemId,
+              chance: clamp01(drop.chance ?? 0),
+              min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+              max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+              rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
+            })),
+            augmentDrops: (table.augmentDrops ?? []).map((drop: any) => ({
+              augmentId: drop.augmentId,
+              chance: clamp01(drop.chance ?? 0),
+              min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+              max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+            })),
           };
           records.push({
             id: entry.id,
@@ -558,7 +651,7 @@ class SimulatorHarness {
     equipEquipBtn?.addEventListener("click", () => {
       const recipe = equipSelect ? this.recipeMap.get(equipSelect.value) : undefined;
       if (recipe) {
-        this.equipFromInventory(recipe.result);
+        this.equipFirstMatchingItem(recipe.result);
         this.updateCraftingAvailability();
       }
     });
@@ -701,7 +794,7 @@ class SimulatorHarness {
         Chest: null,
       };
       this.consumables = {};
-      this.equipmentInventory = {};
+      this.equipmentInventory = [];
       this.totalRewards = createEmptyRewards();
       this.lastRewards = createEmptyRewards();
     }
@@ -1042,15 +1135,15 @@ class SimulatorHarness {
       return;
     }
 
-    Object.entries(this.equippedItems).forEach(([slot, itemId]) => {
-      if (!itemId) {
+    Object.entries(this.equippedItems).forEach(([slot, owned]) => {
+      if (!owned) {
         return;
       }
-      const def = this.itemDefs.get(itemId);
+      const def = this.itemDefs.get(owned.itemId);
       if (!def) {
         return;
       }
-      const equipment = this.createEquipment(def);
+      const equipment = this.createEquipment(def, owned);
       if (!equipment) {
         return;
       }
@@ -1058,7 +1151,7 @@ class SimulatorHarness {
     });
   }
 
-  protected createEquipment(def: ItemDefinition): EquipmentItem | null {
+  protected createEquipment(def: ItemDefinition, owned?: OwnedEquipment | null): EquipmentItem | null {
     if (!def.slot) {
       return null;
     }
@@ -1068,15 +1161,26 @@ class SimulatorHarness {
       return null;
     }
 
+    const rarity: ItemRarity = owned?.rarity ?? "common";
+    const upgradeLevel = Math.max(0, owned?.upgradeLevel ?? 0);
+    const maxUpgradeLevel = Math.max(upgradeLevel, owned?.maxUpgradeLevel ?? def.maxUpgradeLevel ?? 0);
+    const socketSlots = Math.max(0, owned?.socketSlots ?? def.socketSlots ?? 0);
+    const augments = owned?.augments ? [...owned.augments] : [];
+    const rarityMultiplier = getRarityMultiplier(rarity);
+    const upgradeMultiplier = 1 + upgradeLevel * UPGRADE_SCALE_PER_LEVEL;
+    const totalMultiplier = rarityMultiplier * upgradeMultiplier;
+
     if (def.type === "weapon" && def.weapon) {
       const stats = new WeaponStatBlock();
       stats.reset();
       if (def.stats) {
         stats.applyDelta(def.stats);
       }
-      stats.minDamage = def.weapon.minDamage;
-      stats.maxDamage = def.weapon.maxDamage;
+      scaleStatBlockValues(stats, totalMultiplier);
+      stats.minDamage = Math.max(1, Math.round(def.weapon.minDamage * totalMultiplier));
+      stats.maxDamage = Math.max(stats.minDamage, Math.round(def.weapon.maxDamage * totalMultiplier));
       stats.delay = def.weapon.delay;
+      this.applyAugmentBonuses(stats, augments);
 
       const equipment: EquipmentItem = {
         id: def.id,
@@ -1086,6 +1190,11 @@ class SimulatorHarness {
         type: ItemType.Weapon,
         stats,
         slot,
+        rarity,
+        upgradeLevel,
+        maxUpgradeLevel,
+        socketSlots,
+        augments,
       };
       return equipment;
     }
@@ -1096,7 +1205,9 @@ class SimulatorHarness {
       if (def.stats) {
         stats.applyDelta(def.stats);
       }
-      stats.armor = def.armor?.armor ?? 0;
+      scaleStatBlockValues(stats, totalMultiplier);
+      stats.armor = Math.max(0, Math.round((def.armor?.armor ?? 0) * totalMultiplier));
+      this.applyAugmentBonuses(stats, augments);
 
       const equipment: EquipmentItem = {
         id: def.id,
@@ -1106,11 +1217,26 @@ class SimulatorHarness {
         type: ItemType.Armor,
         stats,
         slot,
+        rarity,
+        upgradeLevel,
+        maxUpgradeLevel,
+        socketSlots,
+        augments,
       };
       return equipment;
     }
 
     return null;
+  }
+
+  protected applyAugmentBonuses(stats: StatBlock, augmentIds: string[]) {
+    augmentIds.forEach((augmentId) => {
+      const augmentDef = this.itemDefs.get(augmentId);
+      const bonuses = augmentDef?.augment?.stats;
+      if (bonuses) {
+        stats.applyDelta(bonuses as Partial<StatBlockData>);
+      }
+    });
   }
 
   protected hasMaterials(cost: Record<string, number> = {}): boolean {
@@ -1133,15 +1259,40 @@ class SimulatorHarness {
     this.updateCraftingAvailability();
   }
 
-  protected addEquipmentToInventory(id: string, qty = 1) {
-    this.equipmentInventory[id] = (this.equipmentInventory[id] ?? 0) + qty;
+  protected addEquipmentToInventory(owned: OwnedEquipment) {
+    this.equipmentInventory.push(owned);
     this.updateCraftingAvailability();
   }
 
-  protected removeEquipmentFromInventory(id: string, qty = 1) {
-    const current = this.equipmentInventory[id] ?? 0;
-    this.equipmentInventory[id] = Math.max(0, current - qty);
+  protected removeEquipmentFromInventory(instanceId: string): OwnedEquipment | null {
+    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
+    if (index === -1) {
+      return null;
+    }
+    const [removed] = this.equipmentInventory.splice(index, 1);
     this.updateCraftingAvailability();
+    return removed;
+  }
+
+  protected createOwnedEquipmentInstance(itemId: string, rarity: ItemRarity = "common"): OwnedEquipment | null {
+    const def = this.itemDefs.get(itemId);
+    if (!def) {
+      console.warn(`[Harness] Unknown equipment '${itemId}'.`);
+      return null;
+    }
+    const instanceId = `${itemId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    return {
+      instanceId,
+      itemId: def.id,
+      rarity,
+      upgradeLevel: 0,
+      maxUpgradeLevel: Math.max(
+        0,
+        def.upgrades ? def.upgrades.length : def.maxUpgradeLevel ?? 3
+      ),
+      socketSlots: Math.max(0, def.socketSlots ?? 0),
+      augments: [],
+    };
   }
 
   protected craftEquipment(recipeId: string): boolean {
@@ -1159,17 +1310,17 @@ class SimulatorHarness {
       this.pushLog(`[Craft] Not enough materials for ${def.name}.`);
       return false;
     }
-    const equipment = this.createEquipment(def);
-    if (!equipment) {
+    const owned = this.createOwnedEquipmentInstance(def.id, "common");
+    if (!owned) {
       this.pushLog(`[Craft] Cannot forge ${def.name}.`);
       return false;
     }
     this.consumeMaterials(recipe.cost);
-    this.addEquipmentToInventory(def.id);
-    this.pushLog(`[Craft] Forged ${def.name}.`);
-    const slotKey = def.slot as keyof typeof this.equippedItems;
+    this.addEquipmentToInventory(owned);
+    this.pushLog(`[Craft] Forged ${def.name} (${owned.rarity}).`);
+    const slotKey = def.slot as EquippedSlotKey;
     if (!this.equippedItems[slotKey]) {
-      this.equipFromInventory(def.id);
+      this.equipOwnedFromInventory(owned.instanceId);
     } else {
       this.renderEquipment();
       this.persistState();
@@ -1196,41 +1347,424 @@ class SimulatorHarness {
     return true;
   }
 
-  protected equipFromInventory(itemId: string): boolean {
+  protected equipOwnedFromInventory(instanceId: string): boolean {
     if (!this.hero) {
-      this.pushLog(`[Equip] No hero to equip ${itemId}.`);
+      this.pushLog(`[Equip] No hero available.`);
       this.updateCraftingAvailability();
       return false;
     }
-    const def = this.itemDefs.get(itemId);
+
+    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
+    if (index === -1) {
+      this.pushLog(`[Equip] Item not found in inventory.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+
+    const owned = this.equipmentInventory[index];
+    const def = this.itemDefs.get(owned.itemId);
     if (!def || !def.slot) {
-      this.pushLog(`[Equip] Unknown equipment '${itemId}'.`);
+      this.pushLog(`[Equip] Unknown equipment '${owned.itemId}'.`);
       this.updateCraftingAvailability();
       return false;
     }
-    if ((this.equipmentInventory[itemId] ?? 0) <= 0) {
-      this.pushLog(`[Equip] ${def.name} not in inventory.`);
-      this.updateCraftingAvailability();
-      return false;
-    }
-    const equipment = this.createEquipment(def);
+
+    const equipment = this.createEquipment(def, owned);
     if (!equipment) {
       this.pushLog(`[Equip] Cannot equip ${def.name}.`);
       this.updateCraftingAvailability();
       return false;
     }
-    const slotKey = def.slot as keyof typeof this.equippedItems;
-    const previous = this.hero.equipItem(equipment) as EquipmentItem | undefined;
-    this.removeEquipmentFromInventory(itemId);
-    if (previous && previous.id) {
-      this.addEquipmentToInventory(previous.id);
+
+    const slotKey = def.slot as EquippedSlotKey;
+    const previousOwned = this.equippedItems[slotKey] ?? null;
+    this.hero.equipItem(equipment);
+
+    this.equipmentInventory.splice(index, 1);
+    if (previousOwned) {
+      this.equipmentInventory.push(previousOwned);
     }
-    this.equippedItems[slotKey] = def.id;
-    this.pushLog(`[Equip] ${def.name} equipped.`);
+    this.equippedItems[slotKey] = owned;
+    this.pushLog(`[Equip] ${def.name} (${owned.rarity}) equipped.`);
     this.renderStatsTable();
     this.renderEquipment();
     this.persistState();
     this.updateCraftingAvailability();
+    return true;
+  }
+
+  protected equipFirstMatchingItem(itemId: string): boolean {
+    const owned = this.equipmentInventory.find((item) => item.itemId === itemId);
+    if (!owned) {
+      this.pushLog(`[Equip] ${itemId} not found in inventory.`);
+      this.updateCraftingAvailability();
+      return false;
+    }
+    return this.equipOwnedFromInventory(owned.instanceId);
+  }
+
+  protected mergeEquipmentRewards(target: RewardEquipmentItem[], source: RewardEquipmentItem[] = []) {
+    source.forEach((entry) => {
+      const existing = target.find((item) => item.itemId === entry.itemId && item.rarity === entry.rarity);
+      if (existing) {
+        existing.quantity += entry.quantity;
+      } else {
+        target.push({ itemId: entry.itemId, rarity: entry.rarity, quantity: entry.quantity });
+      }
+    });
+  }
+
+  protected mergeAugmentRewards(target: RewardAugmentItem[], source: RewardAugmentItem[] = []) {
+    source.forEach((entry) => {
+      const existing = target.find((item) => item.augmentId === entry.augmentId);
+      if (existing) {
+        existing.quantity += entry.quantity;
+      } else {
+        target.push({ augmentId: entry.augmentId, quantity: entry.quantity });
+      }
+    });
+  }
+
+  protected grantEquipmentRewards(list: RewardEquipmentItem[] = []) {
+    list.forEach((entry) => {
+      for (let index = 0; index < entry.quantity; index += 1) {
+        const owned = this.createOwnedEquipmentInstance(entry.itemId, entry.rarity);
+        if (owned) {
+          this.addEquipmentToInventory(owned);
+        }
+      }
+    });
+  }
+
+  protected grantAugmentRewards(list: RewardAugmentItem[] = []) {
+    list.forEach((entry) => {
+      this.consumables[entry.augmentId] = (this.consumables[entry.augmentId] ?? 0) + entry.quantity;
+    });
+  }
+
+  protected getOwnedEquipment(instanceId: string): OwnedEquipment | null {
+    const inventoryItem = this.equipmentInventory.find((item) => item.instanceId === instanceId);
+    if (inventoryItem) {
+      return inventoryItem;
+    }
+    const slot = this.findEquippedSlot(instanceId);
+    if (slot) {
+      return this.equippedItems[slot] ?? null;
+    }
+    return null;
+  }
+
+  protected findEquippedSlot(instanceId: string): EquippedSlotKey | null {
+    for (const [slot, owned] of Object.entries(this.equippedItems) as Array<[
+      EquippedSlotKey,
+      OwnedEquipment | null
+    ]>) {
+      if (owned && owned.instanceId === instanceId) {
+        return slot;
+      }
+    }
+    return null;
+  }
+
+  protected getUpgradeMaterials(def: ItemDefinition | undefined, owned: OwnedEquipment): Record<string, number> | null {
+    if (!def || (def.type !== "weapon" && def.type !== "armor")) {
+      return null;
+    }
+    if (owned.upgradeLevel >= owned.maxUpgradeLevel) {
+      return null;
+    }
+    if (def.upgrades && def.upgrades.length) {
+      const tierIndex = Math.min(owned.upgradeLevel, def.upgrades.length - 1);
+      const tier = def.upgrades[tierIndex];
+      if (!tier || !tier.materials) {
+        return null;
+      }
+      const normalized = Object.entries(tier.materials).reduce<Record<string, number>>((acc, [id, amount]) => {
+        const value = Math.max(1, Math.floor(Number(amount) || 0));
+        if (value > 0) {
+          acc[id] = value;
+        }
+        return acc;
+      }, {});
+      if (!Object.keys(normalized).length) {
+        return null;
+      }
+      return normalized;
+    }
+    const materialId = def.type === "weapon" ? "weapon-essence" : "armor-essence";
+    const base = def.type === "weapon" ? 2 : 2;
+    const scale = def.type === "weapon" ? 2 : 3;
+    const amount = base + owned.upgradeLevel * scale;
+    return { [materialId]: amount };
+  }
+
+  protected canUpgradeEquipment(owned: OwnedEquipment): boolean {
+    const def = this.itemDefs.get(owned.itemId);
+    const materials = this.getUpgradeMaterials(def, owned);
+    if (!materials) {
+      return false;
+    }
+    return Object.entries(materials).every(
+      ([id, amount]) => (this.materialsStock[id] ?? 0) >= amount
+    );
+  }
+
+  protected describeUpgrade(def: ItemDefinition | undefined, owned: OwnedEquipment): {
+    label: string;
+    title: string;
+    disabled: boolean;
+  } {
+    const materials = this.getUpgradeMaterials(def, owned);
+    if (!materials) {
+      return {
+        label: "Upgrade (Max)",
+        title: "Maximum upgrade level reached",
+        disabled: true,
+      };
+    }
+    const parts: string[] = [];
+    let hasAll = true;
+    Object.entries(materials).forEach(([id, amount]) => {
+      const ownedQty = this.materialsStock[id] ?? 0;
+      const has = ownedQty >= amount;
+      if (!has) {
+        hasAll = false;
+      }
+      parts.push(`${id} x${amount} (have ${ownedQty})`);
+    });
+    const labelParts = Object.entries(materials).map(([id, amount]) => `${id} x${amount}`);
+    return {
+      label: `Upgrade (${labelParts.join(", ")})`,
+      title: hasAll
+        ? `Spend ${parts.join(", ")}`
+        : `Needs ${parts.join(", ")}`,
+      disabled: !hasAll,
+    };
+  }
+
+  protected describeSocket(owned: OwnedEquipment): {
+    label: string;
+    title: string;
+    disabled: boolean;
+  } {
+    if (owned.socketSlots <= 0) {
+      return {
+        label: "Socket",
+        title: "This item has no sockets",
+        disabled: true,
+      };
+    }
+    if (owned.augments.length >= owned.socketSlots) {
+      return {
+        label: `Socket ${owned.augments.length}/${owned.socketSlots}`,
+        title: "All sockets are filled",
+        disabled: true,
+      };
+    }
+    const available = this.getAvailableAugmentIds();
+    if (!available.length) {
+      return {
+        label: `Socket ${owned.augments.length}/${owned.socketSlots}`,
+        title: "You do not have any augments in inventory",
+        disabled: true,
+      };
+    }
+    return {
+      label: `Socket ${owned.augments.length}/${owned.socketSlots}`,
+      title: `Choose an augment (${available.join(", ")})`,
+      disabled: false,
+    };
+  }
+
+  protected upgradeEquipment(instanceId: string): boolean {
+    const owned = this.getOwnedEquipment(instanceId);
+    if (!owned) {
+      this.pushLog(`[Upgrade] Item not found.`);
+      return false;
+    }
+    const def = this.itemDefs.get(owned.itemId);
+    const materials = this.getUpgradeMaterials(def, owned);
+    if (!def || !materials) {
+      this.pushLog(`[Upgrade] ${owned.itemId} cannot be upgraded further.`);
+      return false;
+    }
+    const missing = Object.entries(materials).filter(
+      ([id, amount]) => (this.materialsStock[id] ?? 0) < amount
+    );
+    if (missing.length) {
+      const parts = missing
+        .map(([id, amount]) => `${id} x${amount} (have ${this.materialsStock[id] ?? 0})`)
+        .join(", ");
+      this.pushLog(`[Upgrade] Need ${parts}.`);
+      this.updateCraftingAvailability();
+      this.renderEquipment();
+      return false;
+    }
+
+    Object.entries(materials).forEach(([id, amount]) => {
+      this.materialsStock[id] = (this.materialsStock[id] ?? 0) - amount;
+    });
+    owned.upgradeLevel = Math.min(owned.maxUpgradeLevel, owned.upgradeLevel + 1);
+
+    const slot = this.findEquippedSlot(instanceId);
+    if (slot && this.hero) {
+      const equipment = this.createEquipment(def, owned);
+      if (equipment) {
+        this.hero.equipItem(equipment);
+        this.renderStatsTable();
+      }
+    }
+
+    const parts = Object.entries(materials)
+      .map(([id, amount]) => `${id} x${amount}`)
+      .join(", ");
+    this.pushLog(
+      `[Upgrade] ${def?.name ?? owned.itemId} -> +${owned.upgradeLevel} (spent ${parts}).`
+    );
+    this.renderEquipment();
+    this.updateCraftingAvailability();
+    this.persistState();
+    return true;
+  }
+
+  protected getSalvageResult(def: ItemDefinition | undefined, owned: OwnedEquipment): {
+    materialId: string;
+    amount: number;
+  } | null {
+    if (!def || (def.type !== "weapon" && def.type !== "armor")) {
+      return null;
+    }
+    const materialId = def.type === "weapon" ? "weapon-essence" : "armor-essence";
+    const base = SALVAGE_VALUE_BY_RARITY[owned.rarity] ?? 1;
+    const bonus = owned.upgradeLevel;
+    const amount = Math.max(1, base + bonus);
+    return { materialId, amount };
+  }
+
+  protected describeSalvage(def: ItemDefinition | undefined, owned: OwnedEquipment): {
+    label: string;
+    title: string;
+    disabled: boolean;
+  } {
+    const result = this.getSalvageResult(def, owned);
+    if (!result) {
+      return {
+        label: "Salvage",
+        title: "Cannot salvage this item",
+        disabled: true,
+      };
+    }
+    return {
+      label: `Salvage (+${result.amount} ${result.materialId})`,
+      title: `Convert to ${result.materialId} x${result.amount}`,
+      disabled: false,
+    };
+  }
+
+  protected canSalvage(instanceId: string): boolean {
+    return this.equipmentInventory.some((item) => item.instanceId === instanceId);
+  }
+
+  protected salvageEquipment(instanceId: string): boolean {
+    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
+    if (index === -1) {
+      this.pushLog(`[Salvage] Item must be unequipped before salvaging.`);
+      return false;
+    }
+
+    const owned = this.equipmentInventory[index];
+    const def = this.itemDefs.get(owned.itemId);
+    const result = this.getSalvageResult(def, owned);
+    if (!result) {
+      this.pushLog(`[Salvage] ${owned.itemId} cannot be salvaged.`);
+      return false;
+    }
+
+    this.equipmentInventory.splice(index, 1);
+    this.materialsStock[result.materialId] =
+      (this.materialsStock[result.materialId] ?? 0) + result.amount;
+
+    this.pushLog(
+      `[Salvage] ${def?.name ?? owned.itemId} dismantled for ${result.materialId} x${result.amount}.`
+    );
+    this.renderEquipment();
+    this.updateCraftingAvailability();
+    this.persistState();
+    return true;
+  }
+
+  protected getAvailableAugmentIds(): string[] {
+    return Object.entries(this.consumables)
+      .filter(([, qty]) => qty > 0)
+      .map(([id]) => id)
+      .filter((id) => this.itemDefs.get(id)?.type === "augment");
+  }
+
+  protected canSocketEquipment(owned: OwnedEquipment): boolean {
+    if (owned.socketSlots <= 0) {
+      return false;
+    }
+    if (owned.augments.length >= owned.socketSlots) {
+      return false;
+    }
+    return this.getAvailableAugmentIds().length > 0;
+  }
+
+  protected socketAugment(instanceId: string): boolean {
+    const owned = this.getOwnedEquipment(instanceId);
+    if (!owned) {
+      this.pushLog(`[Augment] Item not found.`);
+      return false;
+    }
+    if (owned.socketSlots <= 0) {
+      this.pushLog(`[Augment] ${owned.itemId} has no sockets.`);
+      return false;
+    }
+    if (owned.augments.length >= owned.socketSlots) {
+      this.pushLog(`[Augment] All sockets are filled.`);
+      return false;
+    }
+    const available = this.getAvailableAugmentIds();
+    if (!available.length) {
+      this.pushLog(`[Augment] No augments available.`);
+      return false;
+    }
+
+    let chosen = available[0];
+    if (available.length > 1) {
+      const promptValue = window.prompt(
+        `Choose augment (${available.join(", ")})`,
+        chosen
+      );
+      if (!promptValue) {
+        return false;
+      }
+      const trimmed = promptValue.trim();
+      if (!available.includes(trimmed)) {
+        this.pushLog(`[Augment] ${promptValue} is unavailable.`);
+        return false;
+      }
+      chosen = trimmed;
+    }
+
+    this.consumables[chosen] = Math.max(0, (this.consumables[chosen] ?? 0) - 1);
+    owned.augments.push(chosen);
+
+    const def = this.itemDefs.get(owned.itemId);
+    const slot = this.findEquippedSlot(instanceId);
+    if (slot && this.hero && def) {
+      const equipment = this.createEquipment(def, owned);
+      if (equipment) {
+        this.hero.equipItem(equipment);
+        this.renderStatsTable();
+      }
+    }
+
+    const augmentName = this.itemDefs.get(chosen)?.name ?? chosen;
+    this.pushLog(`[Augment] ${def?.name ?? owned.itemId} gains ${augmentName}.`);
+    this.renderEquipment();
+    this.updateCraftingAvailability();
+    this.persistState();
     return true;
   }
 
@@ -1274,13 +1808,7 @@ class SimulatorHarness {
       ? `${Math.round(this.enemy.health)} / ${Math.round(this.enemy.maxHealth)}`
       : "-";
 
-    const rewards = summary.rewards
-      ? {
-          xp: summary.rewards.xp,
-          gold: summary.rewards.gold,
-          materials: { ...(summary.rewards.materials ?? {}) },
-        }
-      : createEmptyRewards();
+    const rewards = normalizeRewards(summary.rewards);
 
     const entry: EncounterHistoryEntry = {
       index: ++this.historyCounter,
@@ -1328,7 +1856,12 @@ class SimulatorHarness {
         return;
       }
       this.selectedLootId = null;
-      this.rewardConfig = { xpPerWin: 0 };
+      this.rewardConfig = {
+        xpPerWin: 0,
+        equipmentDrops: [],
+        augmentDrops: [],
+        materialDrops: [],
+      };
       this.persistState();
       return;
     }
@@ -1346,6 +1879,12 @@ class SimulatorHarness {
       goldMax: record.config.goldMax ?? record.config.goldMin ?? 0,
       materialDrops: record.config.materialDrops
         ? record.config.materialDrops.map((drop) => ({ ...drop }))
+        : [],
+      equipmentDrops: record.config.equipmentDrops
+        ? record.config.equipmentDrops.map((drop) => ({ ...drop }))
+        : [],
+      augmentDrops: record.config.augmentDrops
+        ? record.config.augmentDrops.map((drop) => ({ ...drop }))
         : [],
     };
 
@@ -1466,12 +2005,8 @@ class SimulatorHarness {
       return;
     }
 
-    const rewards = summary.rewards ?? createEmptyRewards();
-    this.lastRewards = {
-      xp: rewards.xp,
-      gold: rewards.gold,
-      materials: { ...(rewards.materials ?? {}) },
-    };
+    const rewards = normalizeRewards(summary.rewards);
+    this.lastRewards = normalizeRewards(summary.rewards);
 
     this.totalRewards.xp += rewards.xp;
     this.totalRewards.gold += rewards.gold;
@@ -1479,8 +2014,19 @@ class SimulatorHarness {
       this.totalRewards.materials[id] =
         (this.totalRewards.materials[id] ?? 0) + qty;
     });
+    this.mergeEquipmentRewards(this.totalRewards.equipment, rewards.equipment);
+    this.mergeAugmentRewards(this.totalRewards.augments, rewards.augments);
 
     this.addMaterials(rewards.materials ?? {});
+    this.grantEquipmentRewards(rewards.equipment);
+    this.grantAugmentRewards(rewards.augments);
+
+    if (rewards.equipment && rewards.equipment.length) {
+      this.pushLog(`[Loot] Equipment: ${this.formatEquipmentList(rewards.equipment)}`);
+    }
+    if (rewards.augments && rewards.augments.length) {
+      this.pushLog(`[Loot] Augments: ${this.formatAugmentList(rewards.augments)}`);
+    }
 
     if (this.hero && rewards.xp > 0) {
       const levels = this.hero.addExperience(rewards.xp);
@@ -1556,6 +2102,10 @@ class SimulatorHarness {
 
     const materialLast = this.formatMaterials(this.lastRewards.materials);
     const materialTotal = this.formatMaterials(this.totalRewards.materials);
+    const equipmentLast = this.formatEquipmentList(this.lastRewards.equipment);
+    const equipmentTotal = this.formatEquipmentList(this.totalRewards.equipment);
+    const augmentLast = this.formatAugmentList(this.lastRewards.augments);
+    const augmentTotal = this.formatAugmentList(this.totalRewards.augments);
 
     const rows = [
       { label: "XP", last: `${this.lastRewards.xp}`, total: `${this.totalRewards.xp}` },
@@ -1564,6 +2114,16 @@ class SimulatorHarness {
         label: "Materials",
         last: materialLast || "-",
         total: materialTotal || "-",
+      },
+      {
+        label: "Equipment",
+        last: equipmentLast || "-",
+        total: equipmentTotal || "-",
+      },
+      {
+        label: "Augments",
+        last: augmentLast || "-",
+        total: augmentTotal || "-",
       },
     ];
 
@@ -1698,30 +2258,78 @@ class SimulatorHarness {
 
     if (equipTable) {
       equipTable.innerHTML = "";
-      const slots: Array<keyof typeof this.equippedItems> = [
+      const slots: EquippedSlotKey[] = [
         "MainHand",
         "OffHand",
         "Head",
         "Chest",
       ];
       slots.forEach((slot) => {
-        const itemId = this.equippedItems[slot];
-        const def = itemId ? this.itemDefs.get(itemId) : undefined;
+        const owned = this.equippedItems[slot];
+        const def = owned ? this.itemDefs.get(owned.itemId) : undefined;
         const tr = document.createElement("tr");
         const slotTd = document.createElement("td");
         slotTd.textContent = slot;
         const itemTd = document.createElement("td");
-        itemTd.textContent = def ? def.name : "-";
+        if (owned && def) {
+          const upgradeLabel = owned.maxUpgradeLevel
+            ? ` +${owned.upgradeLevel}/${owned.maxUpgradeLevel}`
+            : ` +${owned.upgradeLevel}`;
+          const augmentNames = owned.augments
+            .map((id) => this.itemDefs.get(id)?.name ?? id)
+            .join(", ");
+          const augmentLabel = owned.socketSlots
+            ? ` • Aug ${owned.augments.length}/${owned.socketSlots}${augmentNames ? ` (${augmentNames})` : ""}`
+            : "";
+          itemTd.textContent = `${def.name} (${owned.rarity})${upgradeLabel}${augmentLabel}`;
+        } else {
+          itemTd.textContent = "-";
+        }
+        const actionTd = document.createElement("td");
+        if (owned && def) {
+          const upgradeMeta = this.describeUpgrade(def, owned);
+          const upgradeBtn = document.createElement("button");
+          upgradeBtn.textContent = upgradeMeta.label;
+          upgradeBtn.disabled = upgradeMeta.disabled;
+          upgradeBtn.title = upgradeMeta.title;
+          upgradeBtn.style.marginRight = "4px";
+          upgradeBtn.addEventListener("click", () => this.upgradeEquipment(owned.instanceId));
+
+          const socketMeta = this.describeSocket(owned);
+          const socketBtn = document.createElement("button");
+          socketBtn.textContent = socketMeta.label;
+          socketBtn.disabled = socketMeta.disabled;
+          socketBtn.title = socketMeta.title;
+          socketBtn.style.marginRight = "4px";
+          socketBtn.addEventListener("click", () => this.socketAugment(owned.instanceId));
+
+          const salvageMeta = this.describeSalvage(def, owned);
+          const salvageBtn = document.createElement("button");
+          salvageBtn.textContent = salvageMeta.label;
+          const equippedSalvageDisabled = salvageMeta.disabled || !this.canSalvage(owned.instanceId);
+          salvageBtn.disabled = equippedSalvageDisabled;
+          salvageBtn.title = equippedSalvageDisabled
+            ? `${salvageMeta.title}${!this.canSalvage(owned.instanceId) ? " (unequip to salvage)" : ""}`
+            : salvageMeta.title;
+          salvageBtn.style.marginRight = "4px";
+          salvageBtn.addEventListener("click", () => this.salvageEquipment(owned.instanceId));
+
+          actionTd.appendChild(upgradeBtn);
+          actionTd.appendChild(socketBtn);
+          actionTd.appendChild(salvageBtn);
+        } else {
+          actionTd.textContent = "-";
+        }
         tr.appendChild(slotTd);
         tr.appendChild(itemTd);
+        tr.appendChild(actionTd);
         equipTable.appendChild(tr);
       });
     }
 
     if (inventoryTable) {
       inventoryTable.innerHTML = "";
-      const entries = Object.entries(this.equipmentInventory).filter(([, qty]) => qty > 0);
-      if (!entries.length) {
+      if (!this.equipmentInventory.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
         td.colSpan = 3;
@@ -1729,25 +2337,74 @@ class SimulatorHarness {
         tr.appendChild(td);
         inventoryTable.appendChild(tr);
       } else {
-        entries
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .forEach(([id, qty]) => {
-            const def = this.itemDefs.get(id);
+        this.equipmentInventory
+          .slice()
+          .sort((a, b) => {
+            const defA = this.itemDefs.get(a.itemId)?.name ?? a.itemId;
+            const defB = this.itemDefs.get(b.itemId)?.name ?? b.itemId;
+            if (defA !== defB) {
+              return defA.localeCompare(defB);
+            }
+            const rarityOrder: ItemRarity[] = ["legendary", "epic", "rare", "uncommon", "common"];
+            const orderA = rarityOrder.indexOf(a.rarity);
+            const orderB = rarityOrder.indexOf(b.rarity);
+            const weightA = orderA === -1 ? rarityOrder.length : orderA;
+            const weightB = orderB === -1 ? rarityOrder.length : orderB;
+            return weightA - weightB;
+          })
+          .forEach((owned) => {
+            const def = this.itemDefs.get(owned.itemId);
             const tr = document.createElement("tr");
             const nameTd = document.createElement("td");
-            nameTd.textContent = def?.name ?? id;
-            const qtyTd = document.createElement("td");
-            qtyTd.textContent = `${qty}`;
+            nameTd.textContent = def?.name ?? owned.itemId;
+            const infoTd = document.createElement("td");
+            const upgradeLabel = owned.maxUpgradeLevel
+              ? `+${owned.upgradeLevel}/${owned.maxUpgradeLevel}`
+              : `+${owned.upgradeLevel}`;
+            const augmentNames = owned.augments
+              .map((id) => this.itemDefs.get(id)?.name ?? id)
+              .join(", ");
+            const socketsLabel = owned.socketSlots
+              ? `${owned.augments.length}/${owned.socketSlots} sockets${augmentNames ? ` (${augmentNames})` : ""}`
+              : "No sockets";
+            infoTd.textContent = `${owned.rarity} • Upg ${upgradeLabel} • ${socketsLabel}`;
             const actionTd = document.createElement("td");
             const button = document.createElement("button");
             button.textContent = "Equip";
             button.disabled = !this.hero || !def || (def.type !== "weapon" && def.type !== "armor");
             button.addEventListener("click", () => {
-              this.equipFromInventory(id);
+              this.equipOwnedFromInventory(owned.instanceId);
             });
+            const upgradeMeta = this.describeUpgrade(def, owned);
+            const upgradeBtn = document.createElement("button");
+            upgradeBtn.textContent = upgradeMeta.label;
+            upgradeBtn.disabled = upgradeMeta.disabled;
+            upgradeBtn.title = upgradeMeta.title;
+            upgradeBtn.style.marginRight = "4px";
+            upgradeBtn.addEventListener("click", () => this.upgradeEquipment(owned.instanceId));
+
+            const socketMeta = this.describeSocket(owned);
+            const socketBtn = document.createElement("button");
+            socketBtn.textContent = socketMeta.label;
+            socketBtn.disabled = socketMeta.disabled;
+            socketBtn.title = socketMeta.title;
+            socketBtn.style.marginRight = "4px";
+            socketBtn.addEventListener("click", () => this.socketAugment(owned.instanceId));
+
+            const salvageMeta = this.describeSalvage(def, owned);
+            const salvageBtn = document.createElement("button");
+            salvageBtn.textContent = salvageMeta.label;
+            salvageBtn.disabled = salvageMeta.disabled;
+            salvageBtn.title = salvageMeta.title;
+            salvageBtn.style.marginRight = "4px";
+            salvageBtn.addEventListener("click", () => this.salvageEquipment(owned.instanceId));
+
+            actionTd.appendChild(upgradeBtn);
+            actionTd.appendChild(socketBtn);
+            actionTd.appendChild(salvageBtn);
             actionTd.appendChild(button);
             tr.appendChild(nameTd);
-            tr.appendChild(qtyTd);
+            tr.appendChild(infoTd);
             tr.appendChild(actionTd);
             inventoryTable.appendChild(tr);
           });
@@ -1859,6 +2516,16 @@ class SimulatorHarness {
       .join(", ");
   }
 
+  protected formatEquipmentList(list: RewardEquipmentItem[] = []): string {
+    return list
+      .map((entry) => `${entry.itemId} (${entry.rarity}) x${entry.quantity}`)
+      .join(", ");
+  }
+
+  protected formatAugmentList(list: RewardAugmentItem[] = []): string {
+    return list.map((entry) => `${entry.augmentId} x${entry.quantity}`).join(", ");
+  }
+
   protected formatHistoryRewards(rewards: EncounterRewards): string {
     const parts: string[] = [];
     if (rewards.xp) {
@@ -1870,6 +2537,14 @@ class SimulatorHarness {
     const mats = this.formatMaterials(rewards.materials ?? {});
     if (mats) {
       parts.push(mats);
+    }
+    const equipment = this.formatEquipmentList(rewards.equipment ?? []);
+    if (equipment) {
+      parts.push(`Eq: ${equipment}`);
+    }
+    const augments = this.formatAugmentList(rewards.augments ?? []);
+    if (augments) {
+      parts.push(`Aug: ${augments}`);
     }
     return parts.length ? parts.join("; ") : "-";
   }
@@ -1904,7 +2579,8 @@ class SimulatorHarness {
     }
     if (equipEquipBtn) {
       const resultId = equipRecipe?.result ?? null;
-      equipEquipBtn.disabled = !resultId || (this.equipmentInventory[resultId] ?? 0) <= 0;
+      equipEquipBtn.disabled =
+        !resultId || !this.equipmentInventory.some((item) => item.itemId === resultId);
     }
     this.renderRecipeDetails(equipRecipe, "equipment-recipe-details");
 
@@ -1954,6 +2630,34 @@ class SimulatorHarness {
       const heroSelect = document.getElementById("hero-select") as HTMLSelectElement | null;
       const stageSelect = document.getElementById("stage-select") as HTMLSelectElement | null;
 
+      const equippedSnapshot: Record<string, OwnedEquipment | null> = {
+        MainHand: null,
+        OffHand: null,
+        Head: null,
+        Chest: null,
+      };
+      (Object.keys(equippedSnapshot) as EquippedSlotKey[]).forEach((slot) => {
+        const owned = this.equippedItems[slot];
+        equippedSnapshot[slot] = owned
+          ? { ...owned, augments: [...owned.augments] }
+          : null;
+      });
+
+      const inventorySnapshot = this.equipmentInventory.map((item) => ({
+        ...item,
+        augments: [...item.augments],
+      }));
+
+      const legacyEquipped: Record<string, string | null> = {};
+      (Object.keys(equippedSnapshot) as EquippedSlotKey[]).forEach((slot) => {
+        legacyEquipped[slot] = equippedSnapshot[slot]?.itemId ?? null;
+      });
+
+      const legacyInventory: Record<string, number> = {};
+      this.equipmentInventory.forEach((item) => {
+        legacyInventory[item.itemId] = (legacyInventory[item.itemId] ?? 0) + 1;
+      });
+
       const state: PersistedState = {
         version: 1,
         heroId: heroSelect?.value ?? this.heroOptions[0].id,
@@ -1968,9 +2672,11 @@ class SimulatorHarness {
         history: this.history.slice(-40),
         historyCounter: this.historyCounter,
         materialsStock: this.materialsStock,
-        equippedItems: this.equippedItems,
+        equippedItems: legacyEquipped,
         consumables: this.consumables,
-        equipmentInventory: this.equipmentInventory,
+        equipmentInventory: legacyInventory,
+        equippedItemsV2: equippedSnapshot,
+        equipmentInventoryV2: inventorySnapshot,
         timestamp: Date.now(),
       };
 
@@ -2018,23 +2724,63 @@ class SimulatorHarness {
       this.stageWaveCompleted = Math.max(0, state.stageWaveCompleted ?? 0);
       this.totalWavesCompleted = Math.max(0, state.totalWavesCompleted ?? 0);
       this.tickIntervalSeconds = Math.max(0.01, state.tickInterval ?? 0.1);
-      this.totalRewards = state.rewards ?? createEmptyRewards();
-      this.lastRewards = state.lastRewards ?? createEmptyRewards();
+      this.totalRewards = normalizeRewards(state.rewards);
+      this.lastRewards = normalizeRewards(state.lastRewards);
 
       this.pendingSourceProgress = state.heroProgress;
       this.history = state.history ? state.history.slice(-40) : [];
       this.historyCounter = state.historyCounter ?? this.history.length;
       this.renderHistory();
       this.materialsStock = { ...(state.materialsStock ?? {}) };
-      this.equippedItems = {
+
+      const equippedDefaults: Record<EquippedSlotKey, OwnedEquipment | null> = {
         MainHand: null,
         OffHand: null,
         Head: null,
         Chest: null,
-        ...(state.equippedItems ?? {}),
       };
+
+      if (state.equippedItemsV2) {
+        Object.entries(state.equippedItemsV2).forEach(([slot, value]) => {
+          if (slot in equippedDefaults) {
+            equippedDefaults[slot as EquippedSlotKey] = value
+              ? { ...value, augments: [...value.augments] }
+              : null;
+          }
+        });
+      } else if (state.equippedItems) {
+        Object.entries(state.equippedItems).forEach(([slot, itemId]) => {
+          if (!itemId || !(slot in equippedDefaults)) {
+            return;
+          }
+          const owned = this.createOwnedEquipmentInstance(itemId, "common");
+          if (owned) {
+            equippedDefaults[slot as EquippedSlotKey] = owned;
+          }
+        });
+      }
+      this.equippedItems = equippedDefaults;
+
       this.consumables = { ...(state.consumables ?? {}) };
-      this.equipmentInventory = { ...(state.equipmentInventory ?? {}) };
+
+      if (state.equipmentInventoryV2) {
+        this.equipmentInventory = state.equipmentInventoryV2.map((item) => ({
+          ...item,
+          augments: [...item.augments],
+        }));
+      } else if (state.equipmentInventory) {
+        this.equipmentInventory = [];
+        Object.entries(state.equipmentInventory).forEach(([itemId, qty]) => {
+          for (let index = 0; index < qty; index += 1) {
+            const owned = this.createOwnedEquipmentInstance(itemId, "common");
+            if (owned) {
+              this.equipmentInventory.push(owned);
+            }
+          }
+        });
+      } else {
+        this.equipmentInventory = [];
+      }
       return true;
     } catch (err) {
       console.warn("[Harness] Failed to restore state", err);

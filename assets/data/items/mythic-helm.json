@@ -12,5 +12,27 @@
   },
   "armor": {
     "armor": 30
-  }
+  },
+  "socketSlots": 2,
+  "upgrades": [
+    {
+      "materials": {
+        "armor-essence": 6,
+        "mana-crystal": 2
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 8,
+        "glacial-core": 1
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 10,
+        "glacial-core": 1,
+        "storm-sigil": 1
+      }
+    }
+  ]
 }

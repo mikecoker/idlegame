@@ -8,6 +8,33 @@
   },
   "materialDrops": [
     { "id": "iron-ore", "chance": 0.4, "min": 1, "max": 3 },
-    { "id": "leather", "chance": 0.25, "min": 1, "max": 2 }
+    { "id": "leather", "chance": 0.25, "min": 1, "max": 2 },
+    { "id": "weapon-essence", "chance": 0.12, "min": 1, "max": 1 }
+  ],
+  "equipmentDrops": [
+    {
+      "itemId": "rusty-sword",
+      "chance": 0.25,
+      "min": 1,
+      "max": 1,
+      "rarityWeights": { "common": 0.85, "uncommon": 0.15 }
+    },
+    {
+      "itemId": "leather-cap",
+      "chance": 0.2,
+      "min": 1,
+      "max": 1,
+      "rarityWeights": { "common": 0.8, "uncommon": 0.2 }
+    },
+    {
+      "itemId": "leather-vest",
+      "chance": 0.2,
+      "min": 1,
+      "max": 1,
+      "rarityWeights": { "common": 0.8, "uncommon": 0.2 }
+    }
+  ],
+  "augmentDrops": [
+    { "augmentId": "ember-gem", "chance": 0.1, "min": 1, "max": 1 }
   ]
 }

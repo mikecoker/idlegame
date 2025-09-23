@@ -2,7 +2,15 @@ import { _decorator, Component, JsonAsset } from "cc";
 import { CombatSim } from "./combatsim";
 import { Character, CharacterData } from "./character";
 import { UICharacter } from "./UICharacter";
-import { EncounterEvent, EncounterLoop, EncounterSummary } from "./encounter";
+import {
+  EncounterEvent,
+  EncounterLoop,
+  EncounterSummary,
+  LootAugmentDrop,
+  LootEquipmentDrop,
+  RewardAugmentItem,
+  RewardEquipmentItem,
+} from "./encounter";
 const { ccclass, property } = _decorator;
 
 interface LootTableConfig {
@@ -19,6 +27,8 @@ interface LootTableConfig {
     min?: number;
     max?: number;
   }>;
+  equipmentDrops?: LootEquipmentDrop[];
+  augmentDrops?: LootAugmentDrop[];
 }
 
 interface EnemyUnit {
@@ -53,6 +63,8 @@ const DEFAULT_LOOT_TABLE: LootTableConfig = {
     { id: "iron-ore", chance: 0.4, min: 1, max: 3 },
     { id: "leather", chance: 0.25, min: 1, max: 2 },
   ],
+  equipmentDrops: [],
+  augmentDrops: [],
 };
 
 const DEFAULT_STAGE: StageDefinition = {
@@ -537,6 +549,18 @@ export class Simulator extends Component {
             .join(", ")}`
         );
       }
+      const equipmentEntries = (summary.rewards.equipment ?? []).map((entry: RewardEquipmentItem) =>
+        `${entry.itemId} (${entry.rarity}) x${entry.quantity}`
+      );
+      if (equipmentEntries.length) {
+        rewardLines.push(`Equipment: ${equipmentEntries.join(", ")}`);
+      }
+      const augmentEntries = (summary.rewards.augments ?? []).map((entry: RewardAugmentItem) =>
+        `${entry.augmentId} x${entry.quantity}`
+      );
+      if (augmentEntries.length) {
+        rewardLines.push(`Augments: ${augmentEntries.join(", ")}`);
+      }
       console.log(`[Encounter] Rewards — ${rewardLines.join("; ")}`);
 
       if (this._hero && summary.rewards.xp > 0) {
@@ -564,6 +588,19 @@ export class Simulator extends Component {
         min: drop.min,
         max: drop.max,
       })),
+      equipmentDrops: table.equipmentDrops?.map((drop) => ({
+        itemId: drop.itemId,
+        chance: drop.chance,
+        min: drop.min,
+        max: drop.max,
+        rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
+      })),
+      augmentDrops: table.augmentDrops?.map((drop) => ({
+        augmentId: drop.augmentId,
+        chance: drop.chance,
+        min: drop.min,
+        max: drop.max,
+      })),
     };
   }
 
@@ -583,12 +620,29 @@ export class Simulator extends Component {
       max: Math.max(0, Math.floor(drop.max ?? drop.min ?? 0)),
     }));
 
+    const equipmentDrops = (json.equipmentDrops ?? []).map((drop) => ({
+      itemId: drop.itemId,
+      chance: this.clamp01(drop.chance ?? 0),
+      min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+      max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+      rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
+    }));
+
+    const augmentDrops = (json.augmentDrops ?? []).map((drop) => ({
+      augmentId: drop.augmentId,
+      chance: this.clamp01(drop.chance ?? 0),
+      min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+      max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+    }));
+
     return {
       id: json.id ?? DEFAULT_LOOT_TABLE.id,
       name: json.name ?? DEFAULT_LOOT_TABLE.name,
       xpPerWin: Math.max(0, Math.floor(json.xpPerWin ?? 0)),
       gold: { min: goldMin, max: goldMax },
       materialDrops,
+      equipmentDrops,
+      augmentDrops,
     };
   }
 
