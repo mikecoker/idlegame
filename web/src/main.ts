@@ -42,6 +42,7 @@ interface StageDefinition {
   waves: number;
   composition: StageComposition[];
   lootTable?: string;
+  finalBoss?: StageComposition;
 }
 
 interface EnemyManifestEntry {
@@ -216,6 +217,7 @@ class SimulatorHarness {
   protected running = false;
   protected rafHandle: number | null = null;
   protected lastTimestamp = 0;
+  protected currentWaveIsBoss = false;
 
   protected lastRewards: EncounterRewards = createEmptyRewards();
   protected totalRewards: EncounterRewards = createEmptyRewards();
@@ -340,11 +342,14 @@ class SimulatorHarness {
       }
       const manifest = (await response.json()) as ProgressionManifest;
       const stages = manifest.stages ?? [];
+      const defaultFinalBoss: StageComposition = { boss: 1 };
+      const defaultComposition = [{ small: 1 }];
       this.stages = stages.map((stage, index) => ({
         name: stage.name ?? `Stage ${index + 1}`,
         waves: Math.max(1, Math.floor(stage.waves ?? 1)),
-        composition: stage.composition?.length ? stage.composition : [{ small: 1 }],
+        composition: stage.composition?.length ? stage.composition : defaultComposition,
         lootTable: stage.lootTable,
+        finalBoss: stage.finalBoss ?? defaultFinalBoss,
       }));
     } catch (err) {
       console.warn("[Harness] Failed to load progression", err);
@@ -353,6 +358,7 @@ class SimulatorHarness {
           name: "Endless",
           waves: 999,
           composition: [{ small: 1 }, { small: 2 }],
+          finalBoss: { boss: 1 },
         },
       ];
     }
@@ -720,6 +726,7 @@ class SimulatorHarness {
     this.currentWaveNumber = 0;
     this.currentStageName = this.currentStage().name;
     this.currentEnemyLabel = "";
+    this.currentWaveIsBoss = false;
 
     this.hero?.resetVitals();
     this.enemy = null;
@@ -766,6 +773,7 @@ class SimulatorHarness {
           name: "Endless",
           waves: 999,
           composition: [{ small: 1 }, { small: 2 }],
+          finalBoss: { boss: 1 },
         },
       ];
     }
@@ -790,7 +798,11 @@ class SimulatorHarness {
     }
 
     const compositionList = stage.composition && stage.composition.length ? stage.composition : [{ small: 1 }];
-    const pattern = compositionList[this.stageWaveCompleted % compositionList.length];
+    const waveIndex = this.stageWaveCompleted;
+    const isFinalWave = waveIndex === (stage.waves ?? compositionList.length) - 1;
+    const pattern = isFinalWave
+      ? stage.finalBoss ?? { boss: 1 }
+      : compositionList[waveIndex % compositionList.length];
 
     const stageSelect = document.getElementById("stage-select") as HTMLSelectElement | null;
     if (stageSelect && stageSelect.value !== String(this.stageIndex)) {
@@ -809,7 +821,14 @@ class SimulatorHarness {
     });
 
     if (!queue.length) {
-      const fallback = this.pickEnemyFromTier("small") || this.pickEnemyFromTier("medium") || this.pickEnemyFromTier("boss");
+      const fallbackOrder = isFinalWave ? ["boss", "medium", "small"] : ["small", "medium", "boss"];
+      let fallback: EnemyUnit | null = null;
+      for (const tier of fallbackOrder) {
+        fallback = this.pickEnemyFromTier(tier);
+        if (fallback) {
+          break;
+        }
+      }
       if (fallback) {
         queue.push(fallback);
       } else {
@@ -822,6 +841,7 @@ class SimulatorHarness {
     this.currentWaveNumber = this.totalWavesCompleted + 1;
     this.currentStageName = stage.name;
     this.applyStageLoot(stage.lootTable);
+    this.currentWaveIsBoss = isFinalWave;
     return true;
   }
 
@@ -905,32 +925,100 @@ class SimulatorHarness {
       return;
     }
 
-    this.recordHistoryEntry("Victory", this.encounter?.getSummary() ?? null);
-    this.completeWave();
-    if (!this.prepareNextWave()) {
-      console.log("[Encounter] Stages exhausted.");
-      this.renderHistory();
+    const summary = this.encounter?.getSummary() ?? null;
+    this.recordHistoryEntry("Victory", summary);
+    this.renderHistory();
+
+    if (this.currentWaveQueue.length) {
+      const autoResume = this.running;
+      this.encounter = null;
+      this.startNextEncounter(autoResume);
+      if (!autoResume) {
+        this.updateCraftingAvailability();
+      }
       this.persistState();
       return;
     }
 
-    this.stopAuto();
+    const wasBossWave = this.currentWaveIsBoss;
+    const clearedStageName = this.currentStageName;
+    const clearedStageIndex = this.stageIndex;
+
+    this.completeWave();
+    const hasNext = this.prepareNextWave();
+
+    if (!hasNext) {
+      console.log("[Encounter] Stages exhausted.");
+      this.stopAuto();
+      this.encounter = null;
+      this.running = false;
+      this.renderEquipment();
+      this.updateCraftingAvailability();
+      this.pushLog(`[Stage] ${clearedStageName} cleared. All stages complete.`);
+      this.persistState();
+      return;
+    }
+
+    if (wasBossWave) {
+      this.stopAuto();
+      this.encounter = null;
+      this.running = false;
+      this.renderEquipment();
+      this.updateCraftingAvailability();
+      this.pushLog(
+        `[Stage] ${clearedStageName} cleared. Prepare for ${this.currentStageName}.`
+      );
+      this.persistState();
+      return;
+    }
+
+    const auto = this.running;
     this.encounter = null;
-    this.running = false;
-    this.renderEquipment();
-    this.renderHistory();
-    this.updateCraftingAvailability();
-    this.pushLog(
-      `[Stage] ${this.currentStageName} — wave ${this.currentWaveNumber} ready. Craft or press Start.`
-    );
+    this.startNextEncounter(auto);
+    if (!auto) {
+      this.renderEquipment();
+      this.updateCraftingAvailability();
+      this.pushLog(
+        `[Stage] ${this.currentStageName} — wave ${this.currentWaveNumber} ready. Craft or press Start.`
+      );
+    }
     this.persistState();
   }
 
   protected handleHeroDefeat() {
     console.log("[Encounter] Hero defeated. Simulation halted.");
-    this.recordHistoryEntry("Defeat", this.encounter?.getSummary() ?? null);
+    const summary = this.encounter?.getSummary() ?? null;
+    this.recordHistoryEntry("Defeat", summary);
     this.renderHistory();
+    const bossWave = this.currentWaveIsBoss;
+
     this.stopAuto();
+    this.encounter = null;
+    this.running = false;
+
+    if (this.hero) {
+      this.hero.resetVitals();
+      this.renderStatsTable();
+    }
+
+    if (bossWave) {
+      this.stageWaveCompleted = 0;
+      this.currentWaveQueue = [];
+      this.currentWaveNumber = 0;
+      this.currentEnemyLabel = "";
+      this.currentWaveIsBoss = false;
+      if (this.prepareNextWave()) {
+        this.pushLog(
+          `[Boss] ${this.currentStageName} boss repelled the hero. Clear earlier waves to regroup before the next attempt.`
+        );
+      } else {
+        console.warn("[Harness] Failed to reset stage after boss defeat.");
+      }
+    } else {
+      this.pushLog("[Encounter] Defeat. Adjust gear or craft before retrying.");
+    }
+
+    this.renderEquipment();
     this.updateCraftingAvailability();
     this.persistState();
   }
@@ -939,6 +1027,7 @@ class SimulatorHarness {
     this.stageWaveCompleted += 1;
     this.totalWavesCompleted += 1;
     this.currentWaveQueue = [];
+    this.currentWaveIsBoss = false;
   }
 
   protected applyStageLoot(lootId?: string) {
@@ -1817,6 +1906,7 @@ class SimulatorHarness {
       const resultId = equipRecipe?.result ?? null;
       equipEquipBtn.disabled = !resultId || (this.equipmentInventory[resultId] ?? 0) <= 0;
     }
+    this.renderRecipeDetails(equipRecipe, "equipment-recipe-details");
 
     const consumableRecipe = consumableSelect ? this.recipeMap.get(consumableSelect.value) : undefined;
     const consumableResult = consumableRecipe ? consumableRecipe.result : null;
@@ -1826,6 +1916,33 @@ class SimulatorHarness {
     if (consumableUseBtn) {
       consumableUseBtn.disabled = !consumableResult || (this.consumables[consumableResult] ?? 0) <= 0;
     }
+    this.renderRecipeDetails(consumableRecipe, "consumable-recipe-details");
+  }
+
+  protected renderRecipeDetails(recipe: CraftingRecipe | undefined, elementId: string) {
+    const node = document.getElementById(elementId);
+    if (!node) {
+      return;
+    }
+
+    if (!recipe) {
+      node.textContent = "Select a recipe to view costs.";
+      return;
+    }
+
+    const entries = Object.entries(recipe.cost ?? {});
+    if (!entries.length) {
+      node.textContent = "No materials required.";
+      return;
+    }
+
+    const lines = entries.map(([id, required]) => {
+      const need = Math.max(0, Math.floor(Number(required) || 0));
+      const owned = this.materialsStock[id] ?? 0;
+      const status = owned >= need ? "[ok]" : "[need]";
+      return `${status} ${id}: ${owned}/${need}`;
+    });
+    node.textContent = lines.join("\n");
   }
 
   protected persistState() {

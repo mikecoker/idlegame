@@ -74,6 +74,14 @@
         flex: 1 1 220px;
       }
 
+      .craft-details {
+        flex: 1 1 220px;
+        font-size: 0.9rem;
+        color: #c7d4e5;
+        line-height: 1.35;
+        white-space: pre-wrap;
+      }
+
       .craft-row button {
         padding: 8px 14px;
         border: none;
@@ -327,6 +335,7 @@
           Equipment Recipe
           <select id="equipment-recipe-select"></select>
         </label>
+        <div class="craft-details" id="equipment-recipe-details">Select a recipe to view costs.</div>
         <button id="craft-equipment-button">Craft</button>
         <button id="equip-selected-button">Equip Crafted</button>
       </div>
@@ -335,6 +344,7 @@
           Consumable Recipe
           <select id="consumable-recipe-select"></select>
         </label>
+        <div class="craft-details" id="consumable-recipe-details">Select a recipe to view costs.</div>
         <button id="craft-consumable-button">Craft</button>
         <button id="use-consumable-button">Use</button>
       </div>

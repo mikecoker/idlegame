@@ -37,6 +37,7 @@ interface StageDefinition {
   waves?: number;
   composition?: StageComposition[];
   lootTable?: string;
+  finalBoss?: StageComposition;
 }
 
 interface ProgressionData {
@@ -58,7 +59,10 @@ const DEFAULT_STAGE: StageDefinition = {
   name: "Endless",
   waves: 999,
   composition: [{ small: 1 }, { small: 2 }],
+  finalBoss: { boss: 1 },
 };
+
+const DEFAULT_BOSS_COMPOSITION: StageComposition = { boss: 1 };
 
 @ccclass("Simulator")
 export class Simulator extends Component {
@@ -101,6 +105,7 @@ export class Simulator extends Component {
   protected _currentWaveNumber = 0;
   protected _currentStageName = "";
   protected _currentEnemyLabel = "";
+  protected _currentWaveIsBoss = false;
 
   @property({ tooltip: "Simulation tick resolution in seconds" })
   tickIntervalSeconds = 0.1;
@@ -128,6 +133,7 @@ export class Simulator extends Component {
     this._currentWaveQueue = [];
     this._currentWaveNumber = 0;
     this._currentStageName = this._stages[0]?.name ?? "";
+    this._currentWaveIsBoss = false;
 
     this._hero.resetVitals();
     this.srcCharacter.setCharacter(this._hero);
@@ -272,9 +278,24 @@ export class Simulator extends Component {
       return;
     }
 
+    const wasBossWave = this._currentWaveIsBoss;
+    const clearedStageIndex = this._stageIndex;
+    const clearedStageName = this._currentStageName;
+
     this.completeWave();
     if (!this.prepareNextWave()) {
       console.log("[Encounter] All stages complete.");
+      this._encounter = null;
+      this.stopAuto();
+      return;
+    }
+
+    if (wasBossWave) {
+      console.log(
+        `[Encounter] Stage ${clearedStageIndex + 1} (${clearedStageName}) cleared. Pausing before the next stage.`
+      );
+      this._encounter = null;
+      this.stopAuto();
       return;
     }
 
@@ -283,7 +304,28 @@ export class Simulator extends Component {
 
   protected handleHeroDefeat() {
     console.log("[Encounter] Hero defeated. Simulation paused.");
+    const bossWave = this._currentWaveIsBoss;
     this.stopAuto();
+    this._encounter = null;
+
+    if (this._hero) {
+      this._hero.resetVitals();
+      this.srcCharacter.refreshValues();
+    }
+
+    if (bossWave) {
+      console.log(
+        `[Encounter] Boss stands firm. Replaying stage ${this._stageIndex + 1} from the beginning after preparations.`
+      );
+      this._stageWaveCompleted = 0;
+      this._currentWaveQueue = [];
+      this._currentWaveNumber = 0;
+      this._currentEnemyLabel = "";
+      this._currentWaveIsBoss = false;
+      if (!this.prepareNextWave()) {
+        console.warn("[Encounter] Failed to reset stage after boss defeat.");
+      }
+    }
   }
 
   protected startNextEncounter(autoStart = false) {
@@ -366,6 +408,7 @@ export class Simulator extends Component {
       waves: Math.max(1, Math.floor(stage.waves ?? 1)),
       composition: stage.composition?.length ? stage.composition : DEFAULT_STAGE.composition,
       lootTable: stage.lootTable,
+      finalBoss: stage.finalBoss ?? DEFAULT_STAGE.finalBoss ?? DEFAULT_BOSS_COMPOSITION,
     }));
   }
 
@@ -394,7 +437,12 @@ export class Simulator extends Component {
       ? stage.composition
       : DEFAULT_STAGE.composition;
 
-    const pattern = compositionList[this._stageWaveCompleted % compositionList.length];
+    const waveIndex = this._stageWaveCompleted;
+    const isFinalWave = waveIndex === (stage.waves ?? compositionList.length) - 1;
+    const pattern = isFinalWave
+      ? stage.finalBoss ?? DEFAULT_BOSS_COMPOSITION
+      : compositionList[waveIndex % compositionList.length];
+
     const queue: EnemyUnit[] = [];
 
     Object.entries(pattern).forEach(([tier, count]) => {
@@ -408,7 +456,16 @@ export class Simulator extends Component {
     });
 
     if (!queue.length) {
-      const fallback = this.pickEnemyFromTier("small") || this.pickEnemyFromTier("medium") || this.pickEnemyFromTier("boss");
+      const fallbackOrder = isFinalWave
+        ? ["boss", "medium", "small"]
+        : ["small", "medium", "boss"];
+      let fallback: EnemyUnit | null = null;
+      for (const tier of fallbackOrder) {
+        fallback = this.pickEnemyFromTier(tier);
+        if (fallback) {
+          break;
+        }
+      }
       if (!fallback) {
         return false;
       }
@@ -419,6 +476,7 @@ export class Simulator extends Component {
     this._currentWaveNumber = this._totalWavesCompleted + 1;
     this._currentStageName = stage.name ?? `Stage ${this._stageIndex + 1}`;
     this.applyStageLoot(stage.lootTable);
+    this._currentWaveIsBoss = isFinalWave;
 
     return true;
   }
@@ -442,6 +500,7 @@ export class Simulator extends Component {
     this._stageWaveCompleted += 1;
     this._totalWavesCompleted += 1;
     this._currentWaveQueue = [];
+    this._currentWaveIsBoss = false;
   }
 
   protected applyStageLoot(lootId?: string) {
