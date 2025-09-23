@@ -118,9 +118,10 @@ type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
 interface CraftingRecipe {
   id: string;
   result: string;
-  type: "equipment" | "consumable";
+  type: "equipment" | "consumable" | "material";
   tier: string;
   cost: Record<string, number>;
+  resultAmount?: number;
 }
 
 interface PersistedState {
@@ -632,13 +633,16 @@ class SimulatorHarness {
 
     const equipSelect = document.getElementById("equipment-recipe-select") as HTMLSelectElement | null;
     const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
+    const materialSelect = document.getElementById("material-recipe-select") as HTMLSelectElement | null;
     const craftEquipBtn = document.getElementById("craft-equipment-button") as HTMLButtonElement | null;
     const equipEquipBtn = document.getElementById("equip-selected-button") as HTMLButtonElement | null;
     const craftConsumableBtn = document.getElementById("craft-consumable-button") as HTMLButtonElement | null;
     const useConsumableBtn = document.getElementById("use-consumable-button") as HTMLButtonElement | null;
+    const craftMaterialBtn = document.getElementById("craft-material-button") as HTMLButtonElement | null;
 
     equipSelect?.addEventListener("change", () => this.updateCraftingAvailability());
     consumableSelect?.addEventListener("change", () => this.updateCraftingAvailability());
+    materialSelect?.addEventListener("change", () => this.updateCraftingAvailability());
 
     craftEquipBtn?.addEventListener("click", () => {
       const id = equipSelect?.value;
@@ -669,6 +673,14 @@ class SimulatorHarness {
       const consumableId = recipe?.result;
       if (consumableId) {
         this.useConsumable(consumableId);
+        this.updateCraftingAvailability();
+      }
+    });
+
+    craftMaterialBtn?.addEventListener("click", () => {
+      const id = materialSelect?.value;
+      if (id) {
+        this.craftMaterial(id);
         this.updateCraftingAvailability();
       }
     });
@@ -728,6 +740,7 @@ class SimulatorHarness {
   protected populateRecipeSelects() {
     const equipSelect = document.getElementById("equipment-recipe-select") as HTMLSelectElement | null;
     const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
+    const materialSelect = document.getElementById("material-recipe-select") as HTMLSelectElement | null;
 
     if (equipSelect) {
       const previous = equipSelect.value;
@@ -766,6 +779,25 @@ class SimulatorHarness {
         });
       if (!consumableSelect.value && consumableSelect.options.length) {
         consumableSelect.selectedIndex = 0;
+      }
+    }
+
+    if (materialSelect) {
+      const previous = materialSelect.value;
+      materialSelect.innerHTML = "";
+      this.recipes
+        .filter((recipe) => recipe.type === "material")
+        .forEach((recipe) => {
+          const option = document.createElement("option");
+          option.value = recipe.id;
+          option.textContent = `${recipe.result} (${recipe.tier})`;
+          if (previous === recipe.id) {
+            option.selected = true;
+          }
+          materialSelect.appendChild(option);
+        });
+      if (!materialSelect.value && materialSelect.options.length) {
+        materialSelect.selectedIndex = 0;
       }
     }
 
@@ -1310,21 +1342,22 @@ class SimulatorHarness {
       this.pushLog(`[Craft] Not enough materials for ${def.name}.`);
       return false;
     }
-    const owned = this.createOwnedEquipmentInstance(def.id, "common");
-    if (!owned) {
-      this.pushLog(`[Craft] Cannot forge ${def.name}.`);
-      return false;
-    }
+    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
     this.consumeMaterials(recipe.cost);
-    this.addEquipmentToInventory(owned);
-    this.pushLog(`[Craft] Forged ${def.name} (${owned.rarity}).`);
-    const slotKey = def.slot as EquippedSlotKey;
-    if (!this.equippedItems[slotKey]) {
-      this.equipOwnedFromInventory(owned.instanceId);
-    } else {
-      this.renderEquipment();
-      this.persistState();
+    for (let index = 0; index < amount; index += 1) {
+      const owned = this.createOwnedEquipmentInstance(def.id, "common");
+      if (!owned) {
+        continue;
+      }
+      this.addEquipmentToInventory(owned);
+      const slotKey = def.slot as EquippedSlotKey;
+      if (!this.equippedItems[slotKey]) {
+        this.equipOwnedFromInventory(owned.instanceId);
+      }
     }
+    this.pushLog(`[Craft] Forged ${def.name} x${amount}.`);
+    this.renderEquipment();
+    this.persistState();
     return true;
   }
 
@@ -1339,9 +1372,29 @@ class SimulatorHarness {
       return false;
     }
     const def = this.itemDefs.get(recipe.result);
+    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
     this.consumeMaterials(recipe.cost);
-    this.consumables[recipe.result] = (this.consumables[recipe.result] ?? 0) + 1;
-    this.pushLog(`[Craft] Prepared ${def?.name ?? recipe.result}.`);
+    this.consumables[recipe.result] = (this.consumables[recipe.result] ?? 0) + amount;
+    this.pushLog(`[Craft] Prepared ${def?.name ?? recipe.result} x${amount}.`);
+    this.renderEquipment();
+    this.persistState();
+    return true;
+  }
+
+  protected craftMaterial(recipeId: string): boolean {
+    const recipe = this.recipeMap.get(recipeId);
+    if (!recipe || recipe.type !== "material") {
+      this.pushLog(`[Craft] Unknown material recipe '${recipeId}'.`);
+      return false;
+    }
+    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
+    if (!this.hasMaterials(recipe.cost)) {
+      this.pushLog(`[Craft] Not enough materials to refine ${recipe.result}.`);
+      return false;
+    }
+    this.consumeMaterials(recipe.cost);
+    this.materialsStock[recipe.result] = (this.materialsStock[recipe.result] ?? 0) + amount;
+    this.pushLog(`[Craft] Refined ${recipe.result} x${amount}.`);
     this.renderEquipment();
     this.persistState();
     return true;
@@ -2572,6 +2625,8 @@ class SimulatorHarness {
     const consumableSelect = document.getElementById("consumable-recipe-select") as HTMLSelectElement | null;
     const consumableCraftBtn = document.getElementById("craft-consumable-button") as HTMLButtonElement | null;
     const consumableUseBtn = document.getElementById("use-consumable-button") as HTMLButtonElement | null;
+    const materialSelect = document.getElementById("material-recipe-select") as HTMLSelectElement | null;
+    const craftMaterialBtn = document.getElementById("craft-material-button") as HTMLButtonElement | null;
 
     const equipRecipe = equipSelect ? this.recipeMap.get(equipSelect.value) : undefined;
     if (equipCraftBtn) {
@@ -2593,6 +2648,12 @@ class SimulatorHarness {
       consumableUseBtn.disabled = !consumableResult || (this.consumables[consumableResult] ?? 0) <= 0;
     }
     this.renderRecipeDetails(consumableRecipe, "consumable-recipe-details");
+
+    const materialRecipe = materialSelect ? this.recipeMap.get(materialSelect.value) : undefined;
+    if (craftMaterialBtn) {
+      craftMaterialBtn.disabled = !materialRecipe || !this.hasMaterials(materialRecipe.cost);
+    }
+    this.renderRecipeDetails(materialRecipe, "material-recipe-details");
   }
 
   protected renderRecipeDetails(recipe: CraftingRecipe | undefined, elementId: string) {
@@ -2608,7 +2669,8 @@ class SimulatorHarness {
 
     const entries = Object.entries(recipe.cost ?? {});
     if (!entries.length) {
-      node.textContent = "No materials required.";
+      const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
+      node.textContent = `Output: ${recipe.result} x${amount}\nNo materials required.`;
       return;
     }
 
@@ -2618,6 +2680,8 @@ class SimulatorHarness {
       const status = owned >= need ? "[ok]" : "[need]";
       return `${status} ${id}: ${owned}/${need}`;
     });
+    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
+    lines.unshift(`Output: ${recipe.result} x${amount}`);
     node.textContent = lines.join("\n");
   }
 

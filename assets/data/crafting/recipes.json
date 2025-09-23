@@ -108,6 +108,72 @@
         "ancient-cloth": 2,
         "mana-crystal": 2
       }
+    },
+    {
+      "id": "refine-weapon-essence",
+      "result": "weapon-essence",
+      "type": "material",
+      "tier": "small",
+      "resultAmount": 2,
+      "cost": {
+        "iron-ore": 8,
+        "leather": 2
+      }
+    },
+    {
+      "id": "refine-weapon-essence-advanced",
+      "result": "weapon-essence",
+      "type": "material",
+      "tier": "medium",
+      "resultAmount": 3,
+      "cost": {
+        "enchanted-ore": 3,
+        "iron-ore": 6
+      }
+    },
+    {
+      "id": "refine-weapon-essence-master",
+      "result": "weapon-essence",
+      "type": "material",
+      "tier": "boss",
+      "resultAmount": 4,
+      "cost": {
+        "enchanted-ore": 4,
+        "mana-crystal": 2
+      }
+    },
+    {
+      "id": "refine-armor-essence",
+      "result": "armor-essence",
+      "type": "material",
+      "tier": "small",
+      "resultAmount": 2,
+      "cost": {
+        "leather": 8,
+        "iron-ore": 2
+      }
+    },
+    {
+      "id": "refine-armor-essence-advanced",
+      "result": "armor-essence",
+      "type": "material",
+      "tier": "medium",
+      "resultAmount": 3,
+      "cost": {
+        "ancient-cloth": 3,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "id": "refine-armor-essence-master",
+      "result": "armor-essence",
+      "type": "material",
+      "tier": "boss",
+      "resultAmount": 4,
+      "cost": {
+        "ancient-cloth": 4,
+        "mana-crystal": 2
+      }
     }
   ]
 }
