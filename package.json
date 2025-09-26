@@ -5,10 +5,18 @@
     "version": "3.8.0"
   },
   "scripts": {
-    "build:web": "tsc --project tsconfig.web.json --pretty && node ./web/scripts/sync-presets.mjs",
-    "serve:web": "npm run build:web && npx --yes http-server web --port 4321"
+    "build:web": "cd web && vite build",
+    "serve:web": "cd web && vite dev --host --port 4321"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.2",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.9.2",
+    "vite": "^5.4.8"
   }
 }

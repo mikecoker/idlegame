@@ -1,0 +1,38 @@
+{
+  "id": "mythic-plate",
+  "name": "Mythic Plate",
+  "tier": "boss",
+  "type": "armor",
+  "slot": "Chest",
+  "power": 36,
+  "stats": {
+    "defense": 24,
+    "stamina": 8
+  },
+  "armor": {
+    "armor": 48
+  },
+  "socketSlots": 2,
+  "upgrades": [
+    {
+      "materials": {
+        "armor-essence": 7,
+        "mana-crystal": 2
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 9,
+        "glacial-core": 1,
+        "storm-sigil": 1
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 12,
+        "glacial-core": 2,
+        "storm-sigil": 2
+      }
+    }
+  ]
+}

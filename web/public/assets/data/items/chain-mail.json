@@ -1,0 +1,36 @@
+{
+  "id": "chain-mail",
+  "name": "Chain Mail",
+  "tier": "medium",
+  "type": "armor",
+  "slot": "Chest",
+  "power": 20,
+  "stats": {
+    "defense": 12,
+    "stamina": 4
+  },
+  "armor": {
+    "armor": 24
+  },
+  "socketSlots": 1,
+  "upgrades": [
+    {
+      "materials": {
+        "armor-essence": 4,
+        "enchanted-ore": 2
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 6,
+        "ancient-cloth": 4
+      }
+    },
+    {
+      "materials": {
+        "armor-essence": 8,
+        "mana-crystal": 3
+      }
+    }
+  ]
+}

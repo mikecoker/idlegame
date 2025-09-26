@@ -4,23 +4,29 @@
 IdleEQ should deliver a hands-off combat experience where teams progress through encounters, acquire loot, and grow stronger even while the player is away. The roadmap below sequences the work needed to evolve the current combat sandbox into a sustainable idle RPG.
 
 ## Phase 1 – Simulation Core
-- Extend the combat loop to run continuously with configurable tick frequency, pause/resume, and encounter presets.
-- Separate battle logic from Cocos components so the simulator can run headless for offline progress.
-- Expand stats and formulas: attack delays, dual-wielding, dodge, parry, crit bonuses, and armor mitigation capped by enemy level.
+- [x] Extend the combat loop with configurable tick frequency, pause/resume, and encounter presets that run continuously in the web harness.
+- [x] Detach battle logic from Cocos UI; the simulator now exposes TypeScript listeners so the React shell and headless runs share the same core.
+- [ ] Expand stats and formulas: attack delays, dual-wielding, dodge, parry, crit bonuses, and armor mitigation capped by enemy level.
+
+### Harness & Web Migration (Phase 1.5)
+- [x] Deliver live React views for rewards, inventory, materials, crafting, telemetry, and hero stats.
+- [x] Replace legacy DOM mutations with harness notifications (status, controls, logs, history, stats).
+- [ ] Add richer visual analytics (DPS charts, hit timelines) and reactive encounter summaries.
 
 ## Phase 2 – Progression & Economy
-- Track XP, gold, and materials per encounter; grant level-ups that increase derived stats and unlock talent choices.
-- Introduce loot tables tied to `EquipmentSlot`, with item rarity, upgrades, and crafting/infusion sinks.
-- Persist state (characters, inventory, progression timers) to local storage; compute offline gains by replaying ticks while the game was closed.
+- [x] Track XP, gold, materials, and persist encounter history to local storage.
+- [ ] Gate level-ups and talent unlocks behind XP milestones with derived stat growth.
+- [ ] Introduce loot tables per `EquipmentSlot`, item rarity rolls, and crafting/infusion sinks beyond the current prototype recipes.
+- [ ] Reconstruct offline progress by replaying ticks while the game is closed (current save system captures data but no catch-up).
 
 ## Phase 3 – Content & UX
-- Author enemy archetypes and boss encounters via JSON, including scripted abilities, DOTs, and resistances.
-- Provide UI panels for run summaries, loot preview, and automation controls (ability priorities, heal thresholds).
-- Surface analytics (DPS charts, hit rates, time-to-kill) to support tuning and player decision-making.
+- [ ] Author enemy archetypes and boss encounters via JSON, including scripted abilities, DOTs, and resistances.
+- [ ] Build automation controls for combat priorities and heal thresholds; surface presets in the web UI.
+- [ ] Surface analytics dashboards (comparative DPS, hit rates, time-to-kill) to drive balancing and player decision-making.
 
 ## Phase 4 – Live Systems
-- Add prestige/reset loops that grant meta-currencies, enabling long-term retention and scaling difficulty.
-- Implement daily objectives or quests that drive engagement and reward strategic roster building.
-- Harden tooling: add balancing spreadsheets or data exporters, plus unit-style tests for combat math with deterministic RNG.
+- [ ] Add prestige/reset loops that grant meta-currencies, enabling long-term retention and scaling difficulty.
+- [ ] Implement daily objectives or quests that reward roster planning and sustained engagement.
+- [ ] Harden tooling: balancing spreadsheets or data exporters, plus deterministic tests covering combat math and loot.
 
 Each phase should land in reviewable slices; prioritize playable improvements first, then deepen systems iteratively.

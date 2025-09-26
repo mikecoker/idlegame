@@ -1,0 +1,32 @@
+{
+  "id": "kobold",
+  "tier": "medium",
+  "baseStats": {
+    "strength": 12,
+    "agility": 12,
+    "dexterity": 11,
+    "stamina": 12,
+    "intelligence": 5,
+    "wisdom": 4,
+    "charisma": 4,
+    "defense": 32
+  },
+  "derivedStats": {
+    "baseHitpoints": 90,
+    "baseMana": 18,
+    "attackPerStr": 2.5,
+    "accPerStr": 2,
+    "evaPerAgi": 2,
+    "dexPerCrit": 2,
+    "acPerDef": 1.6,
+    "hpPerStamina": 4,
+    "manaPerIntOrWis": 2,
+    "baseDodge": 8,
+    "dodgePerAgi": 0.5,
+    "baseParry": 3,
+    "parryPerDex": 0.18,
+    "baseAttackDelay": 2.1,
+    "minAttackDelay": 0.75,
+    "attackDelayReductionPerAgi": 0.009
+  }
+}

@@ -1,33 +1,26 @@
 # Web Harness
 
-A lightweight DOM playground for the IdleEQ combat simulation. The goal is to inspect and tweak combat math without opening Cocos Creator.
+The harness now renders through React (via Vite) so the combat dashboard can grow into a richer, componentised UI while still consuming the shared simulation logic in `assets/game/`.
 
 ## Prerequisites
 
 - Node.js 18+
-- TypeScript compiler available in `node_modules/.bin`. Install it with:
+- Install dependencies (React, Vite, etc.):
 
   ```bash
-  npm install --save-dev typescript
+  npm install
   ```
 
-- (Optional) `http-server` for local hosting. The provided `serve:web` script pulls it via `npx`.
+  > The command needs internet access. If you are offline, install the packages manually before running the scripts below.
 
 ## Commands
 
 ```bash
-npm run build:web   # transpile to web/dist
-npm run serve:web   # build then serve web/ on http://localhost:4321
+npm run serve:web   # start Vite dev server on http://localhost:4321
+npm run build:web   # produce production bundle in web/dist
 ```
 
-## Connecting to the Simulator
+## Notes
 
-`web/src/main.ts` instantiates `EncounterLoop` with the existing `CombatSim`, `Character`, and JSON presets from `assets/data/`. UI controls let you:
-
-- choose source/target presets,
-- adjust tick interval,
-- start/pause/reset the encounter,
-- inspect live combat logs, stat snapshots, and per-combatant telemetry (hit/crit/miss rates, average hit, DPS).
-- edit or author new presets by pasting CharacterData JSON into the "Custom Presets" panel and applying it to either combatant.
-
-All simulation logic continues to live under `assets/game/`, so changes there propagate to both the web harness and the Cocos project.
+- The React layout renders the structural elements that the existing `SimulatorHarness` expects, so the legacy controller keeps working while we iteratively move logic into composable components.
+- All JSON data (`assets/data/**`) is still shared with the Cocos project and loaded at runtime, so tweaking heroes/enemies/loot continues to update both experiences.

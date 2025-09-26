@@ -1,0 +1,21 @@
+{
+  "id": "rusty-sword",
+  "name": "Rusty Sword",
+  "tier": "small",
+  "type": "weapon",
+  "slot": "MainHand",
+  "power": 10,
+  "stats": {
+    "strength": 2,
+    "dexterity": 1
+  },
+  "weapon": {
+    "minDamage": 8,
+    "maxDamage": 14,
+    "delay": 2.2
+  },
+  "upgrades": [
+    { "materials": { "weapon-essence": 2 } },
+    { "materials": { "weapon-essence": 4, "iron-ore": 6 } }
+  ]
+}

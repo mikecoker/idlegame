@@ -1,0 +1,32 @@
+{
+  "id": "goblin",
+  "tier": "small",
+  "baseStats": {
+    "strength": 8,
+    "agility": 11,
+    "dexterity": 10,
+    "stamina": 9,
+    "intelligence": 3,
+    "wisdom": 2,
+    "charisma": 3,
+    "defense": 18
+  },
+  "derivedStats": {
+    "baseHitpoints": 40,
+    "baseMana": 5,
+    "attackPerStr": 2,
+    "accPerStr": 2,
+    "evaPerAgi": 2,
+    "dexPerCrit": 2,
+    "acPerDef": 1,
+    "hpPerStamina": 3,
+    "manaPerIntOrWis": 1,
+    "baseDodge": 9,
+    "dodgePerAgi": 0.45,
+    "baseParry": 2,
+    "parryPerDex": 0.15,
+    "baseAttackDelay": 2.1,
+    "minAttackDelay": 0.7,
+    "attackDelayReductionPerAgi": 0.01
+  }
+}

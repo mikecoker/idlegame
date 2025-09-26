@@ -1,0 +1,20 @@
+{
+  "id": "leather-vest",
+  "name": "Leather Vest",
+  "tier": "small",
+  "type": "armor",
+  "slot": "Chest",
+  "power": 10,
+  "stats": {
+    "defense": 6,
+    "stamina": 2
+  },
+  "armor": {
+    "armor": 12
+  },
+  "socketSlots": 1,
+  "upgrades": [
+    { "materials": { "armor-essence": 3 } },
+    { "materials": { "armor-essence": 4, "leather": 6 } }
+  ]
+}

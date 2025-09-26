@@ -1,0 +1,51 @@
+{
+  "stages": [
+    {
+      "name": "Beginnings",
+      "waves": 5,
+      "composition": [
+        { "small": 1 },
+        { "small": 2 }
+      ],
+      "lootTable": "starter"
+    },
+    {
+      "name": "Deep Woods",
+      "waves": 5,
+      "composition": [
+        { "small": 1, "medium": 1 },
+        { "small": 2, "medium": 1 },
+        { "medium": 2 }
+      ],
+      "lootTable": "starter"
+    },
+    {
+      "name": "Warband",
+      "waves": 6,
+      "composition": [
+        { "small": 1, "medium": 2 },
+        { "medium": 3 }
+      ],
+      "lootTable": "dungeon"
+    },
+    {
+      "name": "Siege",
+      "waves": 6,
+      "composition": [
+        { "medium": 2, "boss": 1 },
+        { "small": 1, "medium": 1, "boss": 1 }
+      ],
+      "lootTable": "dungeon"
+    },
+    {
+      "name": "Ascension",
+      "waves": 8,
+      "composition": [
+        { "boss": 1 },
+        { "medium": 1, "boss": 1 },
+        { "boss": 2 }
+      ],
+      "lootTable": "dungeon"
+    }
+  ]
+}

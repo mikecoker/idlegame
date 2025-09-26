@@ -1,0 +1,32 @@
+{
+  "id": "troll",
+  "tier": "medium",
+  "baseStats": {
+    "strength": 18,
+    "agility": 8,
+    "dexterity": 7,
+    "stamina": 20,
+    "intelligence": 3,
+    "wisdom": 3,
+    "charisma": 2,
+    "defense": 45
+  },
+  "derivedStats": {
+    "baseHitpoints": 140,
+    "baseMana": 6,
+    "attackPerStr": 3,
+    "accPerStr": 1.8,
+    "evaPerAgi": 1,
+    "dexPerCrit": 1.2,
+    "acPerDef": 2.2,
+    "hpPerStamina": 6,
+    "manaPerIntOrWis": 0.8,
+    "baseDodge": 5,
+    "dodgePerAgi": 0.3,
+    "baseParry": 3,
+    "parryPerDex": 0.15,
+    "baseAttackDelay": 2.6,
+    "minAttackDelay": 1.0,
+    "attackDelayReductionPerAgi": 0.004
+  }
+}

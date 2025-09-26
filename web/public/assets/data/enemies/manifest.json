@@ -1,0 +1,19 @@
+{
+  "tiers": {
+    "small": [
+      { "id": "rat", "label": "Plague Rat", "path": "assets/data/enemies/small/rat.json" },
+      { "id": "spider", "label": "Cave Spider", "path": "assets/data/enemies/small/spider.json" },
+      { "id": "goblin", "label": "Goblin Scout", "path": "assets/data/enemies/small/goblin.json" }
+    ],
+    "medium": [
+      { "id": "orc", "label": "Orc Warrior", "path": "assets/data/enemies/medium/orc.json" },
+      { "id": "troll", "label": "Troll Brute", "path": "assets/data/enemies/medium/troll.json" },
+      { "id": "kobold", "label": "Kobold Shaman", "path": "assets/data/enemies/medium/kobold.json" }
+    ],
+    "boss": [
+      { "id": "giant", "label": "Mountain Giant", "path": "assets/data/enemies/boss/giant.json" },
+      { "id": "dragon", "label": "Ancient Dragon", "path": "assets/data/enemies/boss/dragon.json" },
+      { "id": "necromancer", "label": "Lich Necromancer", "path": "assets/data/enemies/boss/necromancer.json" }
+    ]
+  }
+}

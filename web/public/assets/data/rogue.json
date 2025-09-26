@@ -1,0 +1,45 @@
+{
+  "baseStats": {
+    "strength": 15,
+    "agility": 10,
+    "dexterity": 10,
+    "stamina": 15,
+    "intelligence": 0,
+    "wisdom": 0,
+    "charisma": 5,
+    "defense": 40
+  },
+  "derivedStats": {
+    "baseHitpoints": 30,
+    "baseMana": 0,
+    "attackPerStr": 2, 
+    "accPerStr": 4,
+    "evaPerAgi": 4,
+    "dexPerCrit": 3,
+    "acPerDef": 1,
+    "hpPerStamina": 4,
+    "manaPerIntOrWis": 0,
+    "baseDodge": 12,
+    "dodgePerAgi": 0.6,
+    "baseParry": 6,
+    "parryPerDex": 0.3,
+    "baseAttackDelay": 1.8,
+    "minAttackDelay": 0.5,
+    "attackDelayReductionPerAgi": 0.0125
+  },
+  "progression": {
+    "initialLevel": 1,
+    "xp": {
+      "base": 90,
+      "perLevel": 45,
+      "exponent": 1.15
+    },
+    "statGrowth": {
+      "strength": 2,
+      "agility": 2,
+      "dexterity": 2,
+      "stamina": 2,
+      "defense": 3
+    }
+  }
+}

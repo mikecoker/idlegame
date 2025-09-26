@@ -1,0 +1,14 @@
+{
+  "tables": [
+    {
+      "id": "starter",
+      "label": "Starter Rewards",
+      "path": "assets/data/loot/starter.json"
+    },
+    {
+      "id": "dungeon",
+      "label": "Dungeon Tier",
+      "path": "assets/data/loot/dungeon.json"
+    }
+  ]
+}

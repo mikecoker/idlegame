@@ -1,0 +1,39 @@
+{
+  "id": "dragonslayer-sword",
+  "name": "Dragonslayer Blade",
+  "tier": "boss",
+  "type": "weapon",
+  "slot": "MainHand",
+  "power": 35,
+  "stats": {
+    "strength": 8,
+    "dexterity": 4
+  },
+  "weapon": {
+    "minDamage": 28,
+    "maxDamage": 44,
+    "delay": 1.8
+  },
+  "socketSlots": 2,
+  "upgrades": [
+    {
+      "materials": {
+        "weapon-essence": 6,
+        "mana-crystal": 2
+      }
+    },
+    {
+      "materials": {
+        "weapon-essence": 8,
+        "storm-sigil": 1
+      }
+    },
+    {
+      "materials": {
+        "weapon-essence": 10,
+        "glacial-core": 1,
+        "storm-sigil": 1
+      }
+    }
+  ]
+}

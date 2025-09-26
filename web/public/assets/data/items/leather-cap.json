@@ -1,0 +1,20 @@
+{
+  "id": "leather-cap",
+  "name": "Leather Cap",
+  "tier": "small",
+  "type": "armor",
+  "slot": "Head",
+  "power": 9,
+  "stats": {
+    "defense": 4,
+    "agility": 1
+  },
+  "armor": {
+    "armor": 8
+  },
+  "socketSlots": 1,
+  "upgrades": [
+    { "materials": { "armor-essence": 2 } },
+    { "materials": { "armor-essence": 3, "leather": 4 } }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "healing-potion",
+  "name": "Healing Potion",
+  "tier": "small",
+  "type": "consumable",
+  "effect": {
+    "kind": "heal",
+    "percent": 0.5
+  }
+}

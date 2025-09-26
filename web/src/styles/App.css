@@ -1,0 +1,274 @@
+:root {
+  color-scheme: dark;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-color: #0b1018;
+  color: #f6f8fb;
+}
+
+body, html, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(circle at top, rgba(30, 49, 80, 0.8), rgba(6, 10, 15, 0.95));
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  gap: 24px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(20, 28, 42, 0.8);
+  border: 1px solid rgba(120, 167, 255, 0.2);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 18px 40px rgba(8, 15, 30, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+.controls-group {
+  display: flex;
+  gap: 12px;
+}
+
+.controls-group button,
+.craft-buttons button {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: linear-gradient(135deg, rgba(74, 109, 255, 0.85), rgba(96, 156, 255, 0.6));
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(38, 70, 180, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.controls-group button:hover,
+.craft-buttons button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(38, 70, 180, 0.45);
+}
+
+.controls-group button:disabled,
+.craft-buttons button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.input-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  flex: 1;
+}
+
+.input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: rgba(198, 212, 255, 0.85);
+}
+
+.toggle-field {
+  justify-content: center;
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.input-field select,
+.input-field input {
+  background: rgba(20, 30, 48, 0.9);
+  border: 1px solid rgba(120, 167, 255, 0.25);
+  border-radius: 10px;
+  color: inherit;
+  padding: 8px 10px;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  flex: 1;
+}
+
+.panel {
+  background: rgba(17, 24, 38, 0.85);
+  border-radius: 18px;
+  border: 1px solid rgba(120, 167, 255, 0.15);
+  box-shadow: 0 18px 36px rgba(5, 12, 26, 0.4);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel h2, .panel h3 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  color: rgba(154, 189, 255, 0.9);
+}
+
+.status-text {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.panel table th,
+.panel table td {
+  padding: 6px 8px;
+  border-bottom: 1px dashed rgba(120, 167, 255, 0.15);
+}
+
+.item-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.item-meta {
+  font-size: 0.75rem;
+  color: rgba(198, 212, 255, 0.72);
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.table-actions button {
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 600;
+  font-size: 0.75rem;
+  background: linear-gradient(135deg, rgba(74, 109, 255, 0.75), rgba(96, 156, 255, 0.5));
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(38, 70, 180, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.table-actions button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(38, 70, 180, 0.4);
+}
+
+.table-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.item-hint {
+  font-size: 0.75rem;
+  color: rgba(198, 212, 255, 0.6);
+}
+
+.history-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.equipment-column h3 {
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+  color: rgba(166, 196, 255, 0.85);
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.crafting-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.craft-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: center;
+}
+
+.craft-details {
+  font-size: 0.8rem;
+  color: rgba(198, 212, 255, 0.75);
+  white-space: pre-wrap;
+  background: rgba(11, 18, 30, 0.8);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-height: 48px;
+}
+
+.craft-details div + div {
+  margin-top: 4px;
+}
+
+.craft-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.log-output {
+  min-height: 160px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: rgba(12, 18, 28, 0.9);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls-group {
+    justify-content: space-between;
+  }
+}
