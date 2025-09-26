@@ -311,6 +311,15 @@ export interface TelemetryRow {
 export interface StatRow {
   label: string;
   value: string;
+  raw: number;
+}
+
+export interface StatPreviewRow {
+  label: string;
+  current: string;
+  preview: string;
+  delta: number;
+  deltaFormatted: string;
 }
 
 function createEmptyRewards(): EncounterRewards {
@@ -1334,6 +1343,77 @@ export class SimulatorHarness {
     });
   }
 
+  protected cloneOwnedEquipment(owned: OwnedEquipment): OwnedEquipment {
+    return {
+      ...owned,
+      augments: [...owned.augments],
+    };
+  }
+
+  protected cloneLoadout(
+    overrides: Partial<Record<EquippedSlotKey, OwnedEquipment | null>> = {}
+  ): Record<EquippedSlotKey, OwnedEquipment | null> {
+    const base: Record<EquippedSlotKey, OwnedEquipment | null> = {
+      MainHand: this.equippedItems.MainHand ? this.cloneOwnedEquipment(this.equippedItems.MainHand) : null,
+      OffHand: this.equippedItems.OffHand ? this.cloneOwnedEquipment(this.equippedItems.OffHand) : null,
+      Head: this.equippedItems.Head ? this.cloneOwnedEquipment(this.equippedItems.Head) : null,
+      Chest: this.equippedItems.Chest ? this.cloneOwnedEquipment(this.equippedItems.Chest) : null,
+    };
+
+    (Object.keys(overrides) as EquippedSlotKey[]).forEach((slot) => {
+      const override = overrides[slot];
+      base[slot] = override ? this.cloneOwnedEquipment(override) : null;
+    });
+
+    return base;
+  }
+
+  protected createHeroClone(
+    loadout: Record<EquippedSlotKey, OwnedEquipment | null>
+  ): Character | null {
+    const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id;
+    const preset = heroId
+      ? this.heroOptions.find((option) => option.id === heroId) ?? this.heroOptions[0]
+      : this.heroOptions[0];
+
+    if (!preset) {
+      return null;
+    }
+
+    const clone = new Character(this.cloneData(preset.data));
+    const progress = this.hero?.serializeProgress();
+    if (progress) {
+      clone.restoreProgress(progress);
+    }
+
+    (Object.keys(loadout) as EquippedSlotKey[]).forEach((slot) => {
+      const owned = loadout[slot];
+      if (!owned) {
+        return;
+      }
+      const def = this.itemDefs.get(owned.itemId);
+      if (!def) {
+        return;
+      }
+      const equipment = this.createEquipment(def, owned);
+      if (equipment) {
+        clone.equipItem(equipment);
+      }
+    });
+
+    clone.resetVitals();
+    return clone;
+  }
+
+  protected rebuildHeroFromLoadout() {
+    const loadout = this.cloneLoadout();
+    const clone = this.createHeroClone(loadout);
+    if (!clone) {
+      return;
+    }
+    this.hero = clone;
+  }
+
   protected createEquipment(def: ItemDefinition, owned?: OwnedEquipment | null): EquipmentItem | null {
     if (!def.slot) {
       return null;
@@ -2302,26 +2382,29 @@ export class SimulatorHarness {
   }
 
   protected renderStatsTable() {
-    const rows: StatRow[] = [];
-
     if (!this.hero) {
-      rows.push({ label: "Status", value: "No hero" });
-    } else {
-      const stats = this.collectStatNames(this.hero);
-      stats.forEach((name) => {
-        rows.push({ label: name, value: this.formatStatValue(name, (this.hero as any)[name]) });
-      });
+      this.listeners.onStats?.([{ label: "Status", value: "No hero", raw: 0 }]);
+      return;
     }
 
+    const rows = this.buildStatRows(this.hero);
     this.listeners.onStats?.(rows);
   }
 
-  protected collectStatNames(character: Character): string[] {
-    const proto = Reflect.getPrototypeOf(character);
+  protected buildStatRows(hero: Character): StatRow[] {
+    const proto = Reflect.getPrototypeOf(hero);
     return Object.entries(Object.getOwnPropertyDescriptors(proto))
       .filter(([name, descriptor]) => typeof descriptor.get === "function" && name !== "__proto__")
-      .map(([name]) => name)
-      .sort();
+      .map(([name]) => {
+        const raw = (hero as any)[name];
+        const numericRaw = typeof raw === "number" && Number.isFinite(raw) ? raw : Number.NaN;
+        return {
+          label: name,
+          value: this.formatStatValue(name, raw),
+          raw: numericRaw,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   protected formatStatValue(statName: string, value: unknown): string {
@@ -2708,6 +2791,98 @@ export class SimulatorHarness {
   selectLoot(id: string | null) {
     this.selectLootTable(id, { persist: true });
     this.resetEncounter(false);
+  }
+
+  unequipSlot(slot: EquippedSlotKey): boolean {
+    const owned = this.equippedItems[slot];
+    if (!owned) {
+      return false;
+    }
+
+    const definition = this.itemDefs.get(owned.itemId);
+
+    this.pauseSimulation();
+    this.encounter = null;
+    this.currentWaveQueue = [];
+    this.currentEnemyLabel = "";
+    this.currentWaveNumber = 0;
+
+    this.equippedItems[slot] = null;
+    this.equipmentInventory.push({ ...owned, augments: [...owned.augments] });
+
+    this.rebuildHeroFromLoadout();
+
+    this.telemetry.hero = createTelemetryBucket();
+    this.telemetry.enemy = createTelemetryBucket();
+    this.renderTelemetry();
+    this.renderStatsTable();
+    this.refreshStatus(true);
+    this.syncInventoryView();
+    this.updateCraftingAvailability();
+    this.persistState();
+
+    this.pushLog(`[Equip] ${definition?.name ?? owned.itemId} unequipped.`);
+    return true;
+  }
+
+  getEquipPreview(instanceId: string): StatPreviewRow[] | null {
+    if (!this.hero) {
+      return null;
+    }
+
+    const ownedSource =
+      this.equipmentInventory.find((item) => item.instanceId === instanceId) ??
+      (Object.values(this.equippedItems).find((item) => item?.instanceId === instanceId) ?? null);
+
+    if (!ownedSource) {
+      return null;
+    }
+
+    const definition = this.itemDefs.get(ownedSource.itemId);
+    if (!definition || !definition.slot) {
+      return null;
+    }
+
+    const slotKey = definition.slot as EquippedSlotKey;
+    const baseRows = this.buildStatRows(this.hero);
+    const loadout = this.cloneLoadout({ [slotKey]: ownedSource });
+    const previewHero = this.createHeroClone(loadout);
+    if (!previewHero) {
+      return null;
+    }
+
+    const previewRows = this.buildStatRows(previewHero);
+    const previewMap = new Map(previewRows.map((row) => [row.label, row]));
+
+    return baseRows
+      .map((baseRow) => {
+        const previewRow = previewMap.get(baseRow.label) ?? baseRow;
+        const baseRaw = Number.isFinite(baseRow.raw) ? baseRow.raw : Number.NaN;
+        const previewRaw = Number.isFinite(previewRow.raw) ? previewRow.raw : Number.NaN;
+        const delta = previewRaw - baseRaw;
+
+        return {
+          label: baseRow.label,
+          current: baseRow.value,
+          preview: previewRow.value,
+          delta,
+          deltaFormatted: this.formatDeltaValue(baseRow.label, delta),
+        };
+      })
+      .filter((row) => Number.isFinite(row.delta));
+  }
+
+  protected formatDeltaValue(label: string, delta: number): string {
+    if (!Number.isFinite(delta) || Math.abs(delta) < 1e-4) {
+      return "±0";
+    }
+
+    const isPercent = label.toLowerCase().includes("percent");
+    const scaled = isPercent ? delta * 100 : delta;
+    const magnitude = Math.abs(scaled);
+    const precision = magnitude >= 100 ? 0 : magnitude >= 10 ? 1 : 2;
+    const formatted = scaled.toFixed(precision);
+    return `${scaled >= 0 ? "+" : ""}${formatted}${isPercent ? "%" : ""}`;
   }
 
   protected cloneData<T>(data: T): T {
