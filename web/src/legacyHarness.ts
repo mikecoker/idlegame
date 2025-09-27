@@ -1,22 +1,27 @@
-import { CombatSim } from "../../assets/game/combatsim";
-import { Character, CharacterData, CharacterProgressSnapshot } from "../../assets/game/character";
+import { SimulationRuntime, SimulationState } from "@core/runtime/SimulationRuntime";
 import {
   EncounterEvent,
-  EncounterLoop,
   EncounterRewardConfig,
-  EncounterSummary,
   EncounterRewards,
+  EncounterSummary,
   RewardAugmentItem,
   RewardEquipmentItem,
-} from "../../assets/game/encounter";
-import { EquipmentSlot, ItemType } from "../../assets/game/constants";
-import { EquipmentItem, ItemRarity } from "../../assets/game/item";
+} from "@core/combat/Encounter";
+import { LootTableConfig } from "@core/economy/LootTable";
+import {
+  Character,
+  CharacterData,
+  CharacterProgressSnapshot,
+} from "@core/characters/Character";
+import { EquipmentSlot, ItemType } from "@core/items/constants";
+import { EquipmentItem, ItemRarity } from "@core/items/Item";
 import {
   StatBlock,
   WeaponStatBlock,
   ArmorStatBlock,
   StatBlockData,
-} from "../../assets/game/stat";
+} from "@core/stats/StatBlock";
+import { WebDataSource } from "../../platforms/web/WebDataSource";
 
 interface Preset {
   id: string;
@@ -367,10 +372,11 @@ function clamp01(value: number): number {
 
 export class SimulatorHarness {
   protected listeners: HarnessListeners;
-  protected sim = new CombatSim();
+  protected runtime: SimulationRuntime | null = null;
+  protected runtimeState: SimulationState | null = null;
+  protected dataSource: WebDataSource | null = null;
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
-  protected encounter: EncounterLoop | null = null;
 
   protected heroOptions: Preset[] = [];
   protected enemyPools: Record<string, EnemyUnit[]> = {
@@ -674,19 +680,110 @@ export class SimulatorHarness {
     this.listeners = listeners;
   }
 
+  protected async initializeRuntime() {
+    const baseUrl = import.meta.env.BASE_URL ?? "/";
+    this.dataSource = new WebDataSource({
+      baseUrl,
+      heroManifestUrl: "assets/data/heroes/manifest.json",
+      enemyManifestUrl: "assets/data/enemies/manifest.json",
+      stageConfigUrl: "assets/data/encounters/progression.json",
+      lootManifestUrl: "assets/data/loot/manifest.json",
+    });
+
+    this.runtime = new SimulationRuntime(this.dataSource, {
+      tickIntervalSeconds: this.tickIntervalSeconds,
+      autoStart: false,
+      hooks: {
+        onStateChanged: (state) => this.handleRuntimeState(state),
+        onEncounterEvents: (events) => this.handleRuntimeEvents(events),
+        onEncounterComplete: (summary) => this.handleRuntimeComplete(summary),
+        onLog: (entry) => this.pushLog(entry),
+      },
+    });
+
+    await this.runtime.initialize(true);
+
+    const initialState = this.runtime.getState();
+    this.applyRuntimeState(initialState);
+
+    const heroDefs = this.runtime.listHeroes();
+    this.heroOptions = heroDefs.map((hero) => ({
+      id: hero.id,
+      label: hero.label ?? hero.id,
+      data: hero.data,
+    }));
+
+    const stages = this.runtime.listStages();
+    this.stages = stages.map((stage, index) => ({
+      name: stage.name ?? `Stage ${index + 1}`,
+      waves: Math.max(1, Math.floor(stage.waves ?? 1)),
+      composition: stage.composition?.map((entry) => ({ ...entry })) ?? [],
+      lootTable: stage.lootTable ?? null,
+      finalBoss: stage.finalBoss ?? { boss: 1 },
+    }));
+
+    const lootTables = this.runtime.listLootTables();
+    this.lootTables = lootTables.map((table) => ({
+      id: table.id ?? table.name ?? "loot",
+      label: table.name ?? table.id ?? "Loot",
+      config: this.convertLootTableToRewardConfig(table),
+    }));
+
+    if (!this.selectedHeroId && heroDefs.length) {
+      this.selectedHeroId = heroDefs[0].id;
+    }
+
+    if (!this.selectedLootId && this.lootTables.length) {
+      this.selectedLootId = this.runtimeState?.lootTableId ?? this.lootTables[0].id;
+    }
+
+    this.rewardConfig = this.findRewardConfig(this.selectedLootId);
+  }
+
+  protected convertLootTableToRewardConfig(table: LootTableConfig): EncounterRewardConfig {
+    const goldMin = Math.max(0, Math.floor(table.gold?.min ?? 0));
+    const goldMax = Math.max(goldMin, Math.floor(table.gold?.max ?? table.gold?.min ?? 0));
+
+    return {
+      xpPerWin: Math.max(0, Math.floor(table.xpPerWin ?? 0)),
+      goldMin,
+      goldMax,
+      materialDrops: table.materialDrops?.map((drop) => ({
+        id: drop.id,
+        chance: clamp01(drop.chance ?? 0),
+        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : 0,
+        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : 0,
+      })),
+      equipmentDrops: table.equipmentDrops?.map((drop) => ({
+        itemId: drop.itemId,
+        chance: clamp01(drop.chance ?? 0),
+        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+        rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
+      })),
+      augmentDrops: table.augmentDrops?.map((drop) => ({
+        augmentId: drop.augmentId,
+        chance: clamp01(drop.chance ?? 0),
+        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+      })),
+    };
+  }
+
+  protected findRewardConfig(lootId: string | null): EncounterRewardConfig {
+    if (!lootId) {
+      return this.rewardConfig;
+    }
+    const record = this.lootTables.find((table) => table.id === lootId);
+    return record?.config ?? this.rewardConfig;
+  }
+
   async init() {
     this.setStatusMessage("Loading data...");
 
-    const [heroOptions, lootTables] = await Promise.all([
-      this.loadHeroPresets(),
-      this.loadLootTables(),
-    ]);
-    this.heroOptions = heroOptions;
-    this.lootTables = lootTables;
+    await this.initializeRuntime();
 
     await Promise.all([
-      this.loadEnemyPools(),
-      this.loadStages(),
       this.loadItemDefinitions(),
       this.loadRecipes(),
     ]);
@@ -706,103 +803,6 @@ export class SimulatorHarness {
     this.renderHistory();
     this.populateRecipeSelects();
     this.updateCraftingAvailability();
-  }
-
-  protected async loadHeroPresets(): Promise<Preset[]> {
-    const results: Preset[] = [];
-    for (const source of HERO_SOURCES) {
-      try {
-        const response = await fetch(`./${source.path}`, { cache: "no-cache" });
-        if (!response.ok) {
-          throw new Error(`${response.status} ${response.statusText}`);
-        }
-        const data = (await response.json()) as CharacterData;
-        results.push({ id: source.id, label: source.label, data });
-      } catch (err) {
-        console.warn(`[Harness] Failed to load hero preset '${source.id}'`, err);
-      }
-    }
-    return results.length ? results : [];
-  }
-
-  protected async loadEnemyPools(): Promise<void> {
-    const pools: Record<string, EnemyUnit[]> = {
-      small: [],
-      medium: [],
-      boss: [],
-    };
-
-    try {
-      const response = await fetch(resolveDataUrl("assets/data/enemies/manifest.json"), {
-        cache: "no-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const manifest = (await response.json()) as EnemyManifestData;
-      const entries = manifest.tiers ?? {};
-
-      for (const [tier, list] of Object.entries(entries)) {
-        const cleanedTier = tier.toLowerCase();
-        pools[cleanedTier] = pools[cleanedTier] ?? [];
-        for (const entry of list) {
-          try {
-          const resolvedPath = resolveDataUrl(entry.path);
-          const enemyResp = await fetch(resolvedPath, {
-              cache: "no-cache",
-            });
-            if (!enemyResp.ok) {
-              throw new Error(`${enemyResp.status} ${enemyResp.statusText}`);
-            }
-            const data = (await enemyResp.json()) as CharacterData;
-            pools[cleanedTier].push({
-              id: entry.id,
-              label: entry.label ?? entry.id,
-              tier: cleanedTier,
-              data,
-            });
-          } catch (err) {
-            console.warn(`[Harness] Failed to load enemy '${entry.id}'`, err);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("[Harness] Failed to load enemy manifest", err);
-    }
-
-    this.enemyPools = pools;
-  }
-
-  protected async loadStages(): Promise<void> {
-    try {
-      const response = await fetch(resolveDataUrl("assets/data/encounters/progression.json"), {
-        cache: "no-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const manifest = (await response.json()) as ProgressionManifest;
-      const stages = manifest.stages ?? [];
-      const defaultFinalBoss: StageComposition = { boss: 1 };
-      const defaultComposition = [{ small: 1 }];
-      this.stages = stages.map((stage, index) => ({
-        name: stage.name ?? `Stage ${index + 1}`,
-        waves: Math.max(1, Math.floor(stage.waves ?? 1)),
-        composition: stage.composition?.length ? stage.composition : defaultComposition,
-        lootTable: stage.lootTable,
-        finalBoss: stage.finalBoss ?? defaultFinalBoss,
-      }));
-    } catch (err) {
-      console.warn("[Harness] Failed to load progression", err);
-      this.stages = [
-        {
-          name: "Endless",
-          waves: 999,
-          composition: [{ small: 1 }, { small: 2 }],
-          finalBoss: { boss: 1 },
-        },
-      ];
-    }
   }
 
   protected async loadItemDefinitions(): Promise<void> {

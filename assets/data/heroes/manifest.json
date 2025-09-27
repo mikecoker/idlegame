@@ -1,0 +1,7 @@
+{
+  "presets": [
+    { "id": "hero", "label": "Hero", "path": "assets/data/hero.json" },
+    { "id": "rogue", "label": "Rogue", "path": "assets/data/rogue.json" },
+    { "id": "warrior", "label": "Warrior", "path": "assets/data/warrior.json" }
+  ]
+}

@@ -5,6 +5,14 @@
   /* Add your custom configuration here. */
   "compilerOptions": {
     "target": "ES2017",
-    "strict": false
-  }
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "@core/*": ["core/*"],
+      "@assets/*": ["assets/*"],
+      "@web/*": ["web/*"]
+    }
+  },
+  "include": ["core/**/*.ts", "platforms/**/*.ts", "assets/**/*.ts", "web/**/*.ts"],
+  "exclude": ["library", "temp", "profiles", "settings", "node_modules", "web/dist"]
 }
