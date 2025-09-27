@@ -37,6 +37,70 @@ body {
   backdrop-filter: blur(12px);
 }
 
+.status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: rgba(16, 24, 38, 0.85);
+  border: 1px solid rgba(120, 167, 255, 0.18);
+  border-radius: 16px;
+  padding: 14px 18px;
+  box-shadow: 0 14px 32px rgba(5, 12, 26, 0.35);
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.tab-strip {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.tab-button {
+  padding: 10px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 167, 255, 0.16);
+  background: rgba(15, 22, 36, 0.75);
+  color: rgba(198, 212, 255, 0.85);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.tab-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(38, 70, 180, 0.3);
+}
+
+.tab-button-active {
+  background: linear-gradient(135deg, rgba(74, 109, 255, 0.85), rgba(96, 156, 255, 0.6));
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(38, 70, 180, 0.4);
+}
+
+.status-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(9, 15, 26, 0.75);
+  border: 1px solid rgba(120, 167, 255, 0.14);
+}
+
+.status-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(154, 189, 255, 0.72);
+}
+
+.status-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .controls-group {
   display: flex;
   gap: 12px;

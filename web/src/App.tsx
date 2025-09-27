@@ -23,6 +23,7 @@ import LogPanel from "./components/LogPanel";
 import Paperdoll from "./components/Paperdoll";
 import RewardsPanel, { RewardsRow } from "./components/RewardsPanel";
 import StatusPanel from "./components/StatusPanel";
+import TabStrip, { TabKey } from "./components/TabStrip";
 import TelemetryPanel from "./components/TelemetryPanel";
 import { formatAugmentList, formatEquipmentList } from "./utils/formatting";
 import "./styles/App.css";
@@ -33,6 +34,7 @@ const App = () => {
   const harnessRef = useRef<SimulatorHarness | null>(null);
   const [harnessReady, setHarnessReady] = useState(false);
   const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>("hero");
   const [rewards, setRewards] = useState<{ last: EncounterRewards; total: EncounterRewards } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [history, setHistory] = useState<EncounterHistoryEntry[]>([]);
@@ -282,47 +284,61 @@ const App = () => {
         onAutoResumeToggle={handleAutoResumeToggle}
       />
 
-      <main className="content-grid">
-        <StatusPanel status={status} />
-        <RewardsPanel rows={rewardRows} />
-        <TelemetryPanel rows={telemetryRows} />
-        <HistoryPanel history={history} />
-        <section className="panel paperdoll-panel">
-          <h2>Hero Loadout</h2>
-          <Paperdoll
-            equipped={equipped}
+      <StatusPanel status={status} />
+      <TabStrip active={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "hero" ? (
+        <main className="content-grid">
+          <section className="panel paperdoll-panel">
+            <h2>Hero Loadout</h2>
+            <Paperdoll
+              equipped={equipped}
+              resolveItem={getItemDefinition}
+              stats={statsRows}
+              onUnequip={handleUnequipSlot}
+            />
+          </section>
+          <InventoryPanel
+            inventory={inventory}
+            materials={materials}
+            harnessReady={harnessReady}
             resolveItem={getItemDefinition}
-            stats={statsRows}
-            onUnequip={handleUnequipSlot}
+            getActionState={getActionState}
+            getPreview={getEquipPreview}
+            onEquip={handleEquip}
+            onUpgrade={handleUpgrade}
+            onSocket={handleSocket}
+            onSalvage={handleSalvage}
+            onUseConsumable={handleUseConsumable}
           />
-        </section>
-        <InventoryPanel
-          inventory={inventory}
-          materials={materials}
-          harnessReady={harnessReady}
-          resolveItem={getItemDefinition}
-          getActionState={getActionState}
-          getPreview={getEquipPreview}
-          onEquip={handleEquip}
-          onUpgrade={handleUpgrade}
-          onSocket={handleSocket}
-          onSalvage={handleSalvage}
-          onUseConsumable={handleUseConsumable}
-        />
-        <CraftingPanel
-          crafting={crafting}
-          harnessReady={harnessReady}
-          onSelectEquipment={handleSelectEquipmentRecipe}
-          onSelectConsumable={handleSelectConsumableRecipe}
-          onSelectMaterial={handleSelectMaterialRecipe}
-          onCraftEquipment={handleCraftEquipment}
-          onEquipCrafted={handleEquipCrafted}
-          onCraftConsumable={handleCraftConsumable}
-          onUseConsumable={handleUseCraftedConsumable}
-          onCraftMaterial={handleCraftMaterial}
-        />
-        <LogPanel logs={logs} />
-      </main>
+        </main>
+      ) : null}
+
+      {activeTab === "dungeon" ? (
+        <main className="content-grid">
+          <RewardsPanel rows={rewardRows} />
+          <TelemetryPanel rows={telemetryRows} />
+          <HistoryPanel history={history} />
+          <LogPanel logs={logs} />
+        </main>
+      ) : null}
+
+      {activeTab === "crafting" ? (
+        <main className="content-grid">
+          <CraftingPanel
+            crafting={crafting}
+            harnessReady={harnessReady}
+            onSelectEquipment={handleSelectEquipmentRecipe}
+            onSelectConsumable={handleSelectConsumableRecipe}
+            onSelectMaterial={handleSelectMaterialRecipe}
+            onCraftEquipment={handleCraftEquipment}
+            onEquipCrafted={handleEquipCrafted}
+            onCraftConsumable={handleCraftConsumable}
+            onUseConsumable={handleUseCraftedConsumable}
+            onCraftMaterial={handleCraftMaterial}
+          />
+        </main>
+      ) : null}
     </div>
   );
 };

@@ -5,47 +5,51 @@ interface StatusPanelProps {
   status: StatusPayload | null;
 }
 
+const STATUS_METRICS: Array<{ key: keyof StatusPayload | "label"; label: string; formatter?: (value: number | string | null) => string }>= [
+  { key: "label", label: "State" },
+  { key: "stage", label: "Stage" },
+  { key: "wave", label: "Wave" },
+  { key: "opponent", label: "Opponent" },
+  {
+    key: "elapsedSeconds",
+    label: "Elapsed",
+    formatter: (value) => `${Number(value ?? 0).toFixed(1)}s`,
+  },
+  { key: "swings", label: "Swings" },
+  { key: "heroDamage", label: "Hero Dmg" },
+  { key: "enemyDamage", label: "Enemy Dmg" },
+  { key: "winner", label: "Winner" },
+];
+
 const StatusPanel: FC<StatusPanelProps> = ({ status }) => (
-  <section className="panel status-panel">
-    <h2>Status</h2>
-    <div className="status-text">{status?.label ?? "Idle"}</div>
-    <table className="status-table">
-      <tbody>
-        <tr>
-          <th>Stage</th>
-          <td>{status?.stage ?? "-"}</td>
-        </tr>
-        <tr>
-          <th>Wave</th>
-          <td>{status?.wave ?? 0}</td>
-        </tr>
-        <tr>
-          <th>Opponent</th>
-          <td>{status?.opponent ?? "-"}</td>
-        </tr>
-        <tr>
-          <th>Elapsed</th>
-          <td>{status ? `${status.elapsedSeconds.toFixed(1)}s` : "0.0s"}</td>
-        </tr>
-        <tr>
-          <th>Swings</th>
-          <td>{status?.swings ?? 0}</td>
-        </tr>
-        <tr>
-          <th>Hero Dmg</th>
-          <td>{status?.heroDamage ?? 0}</td>
-        </tr>
-        <tr>
-          <th>Enemy Dmg</th>
-          <td>{status?.enemyDamage ?? 0}</td>
-        </tr>
-        <tr>
-          <th>Winner</th>
-          <td>{status?.winner ?? "-"}</td>
-        </tr>
-      </tbody>
-    </table>
+  <section className="status-bar">
+    {STATUS_METRICS.map(({ key, label, formatter }) => (
+      <div key={key} className="status-chip">
+        <span className="status-label">{label}</span>
+        <span className="status-value">
+          {formatMetric(status, key, formatter)}
+        </span>
+      </div>
+    ))}
   </section>
 );
+
+function formatMetric(
+  status: StatusPayload | null,
+  key: keyof StatusPayload | "label",
+  formatter?: (value: number | string | null) => string
+): string {
+  if (!status) {
+    return key === "label" ? "Idle" : "-";
+  }
+  const raw = key === "label" ? status.label : (status[key] as number | string | null);
+  if (formatter) {
+    return formatter(raw);
+  }
+  if (raw === null || raw === undefined || raw === "") {
+    return "-";
+  }
+  return typeof raw === "number" && Number.isFinite(raw) ? String(raw) : String(raw);
+}
 
 export default StatusPanel;

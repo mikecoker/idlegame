@@ -1891,12 +1891,10 @@ export class SimulatorHarness {
     owned.upgradeLevel = Math.min(owned.maxUpgradeLevel, owned.upgradeLevel + 1);
 
     const slot = this.findEquippedSlot(instanceId);
-    if (slot && this.hero) {
-      const equipment = this.createEquipment(def, owned);
-      if (equipment) {
-        this.hero.equipItem(equipment);
-        this.renderStatsTable();
-      }
+    if (slot) {
+      this.rebuildHeroFromLoadout();
+      this.renderStatsTable();
+      this.refreshStatus(true);
     }
 
     const parts = Object.entries(materials)
