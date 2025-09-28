@@ -9,7 +9,7 @@ import {
   describeItemDetails,
   formatOwnedSummary,
   formatAugmentNames,
-} from "../utils/formatting";
+} from "@core/utils/formatting";
 
 interface InventoryPanelProps {
   inventory: OwnedEquipment[];

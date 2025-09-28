@@ -5,7 +5,7 @@ import type {
   OwnedEquipment,
   StatRow,
 } from "../simulatorHarness";
-import { formatAugmentNames, formatOwnedSummary } from "../utils/formatting";
+import { formatAugmentNames, formatOwnedSummary } from "@core/utils/formatting";
 
 interface PaperdollProps {
   equipped: Record<EquippedSlotKey, OwnedEquipment | null>;

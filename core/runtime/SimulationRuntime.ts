@@ -15,13 +15,9 @@ import {
   LootRange,
   LootTableConfig,
 } from "../economy/LootTable";
-import {
-  DEFAULT_BOSS_COMPOSITION,
-  DEFAULT_STAGE,
-  EnemyUnit,
-  StageDefinition,
-  StageComposition,
-} from "../progression/Stage";
+import { EnemyUnit, StageDefinition } from "../progression/Stage";
+import { ProgressionConfig } from "../progression/ProgressionConfig";
+import { StageGenerator, StageBlueprint, BossEncounterConfig, StageRewardsSummary } from "../progression/StageGenerator";
 import {
   CraftingRecipe,
   ItemDefinition,
@@ -67,7 +63,11 @@ export class SimulationRuntime {
 
   protected heroes: HeroDefinition[] = [];
   protected enemyPools: Record<string, EnemyUnit[]> = { small: [], medium: [], boss: [] };
-  protected stages: StageDefinition[] = [];
+  protected progressionConfig: ProgressionConfig | null = null;
+  protected stageGenerator: StageGenerator | null = null;
+  protected stageCache: Map<number, StageBlueprint> = new Map();
+  protected stageRewards: StageRewardsSummary | null = null;
+  protected bossConfig: BossEncounterConfig | null = null;
   protected lootTables: Map<string, LootTableConfig> = new Map();
   protected itemDefinitions: ItemDefinition[] = [];
   protected craftingRecipes: CraftingRecipe[] = [];
@@ -111,7 +111,11 @@ export class SimulationRuntime {
   async initialize(freshHero = true): Promise<void> {
     this.heroes = await this.dataSource.loadHeroes();
     this.enemyPools = await this.dataSource.loadEnemyPools();
-    this.stages = this.sanitiseStages(await this.dataSource.loadStages());
+    this.progressionConfig = await this.dataSource.loadProgressionConfig();
+    this.stageCache.clear();
+    if (this.progressionConfig) {
+      this.stageGenerator = new StageGenerator(this.progressionConfig);
+    }
 
     const lootTables = await this.dataSource.loadLootTables();
     this.lootTables.clear();
@@ -177,7 +181,19 @@ export class SimulationRuntime {
   }
 
   listStages(): StageDefinition[] {
-    return this.stages.map((stage) => ({ ...stage, composition: stage.composition?.map((entry) => ({ ...entry })) }));
+    const maxStages = Math.max(this.stageIndex + 10, 50);
+    const stages: StageDefinition[] = [];
+    for (let index = 0; index < maxStages; index += 1) {
+      const stageNumber = index + 1;
+      const blueprint = this.getStageBlueprint(stageNumber);
+      stages.push({
+        id: `stage-${stageNumber}`,
+        name: blueprint?.name ?? `Stage ${stageNumber}`,
+        waves: blueprint?.waves.length ?? 0,
+        lootTable: blueprint?.lootTableId ?? null,
+      });
+    }
+    return stages;
   }
 
   listLootTables(): LootTableConfig[] {
@@ -212,7 +228,7 @@ export class SimulationRuntime {
   }
 
   setStageIndex(index: number) {
-    this.stageIndex = Math.max(0, Math.min(index, Math.max(this.stages.length - 1, 0)));
+    this.stageIndex = Math.max(0, index);
     this.resetEncounterInternal();
     this.emitState();
   }
@@ -386,7 +402,10 @@ export class SimulationRuntime {
     this.totalWavesCompleted = 0;
     this.currentWaveQueue = [];
     this.currentWaveNumber = 0;
-    this.currentStageName = this.stages[this.stageIndex]?.name ?? DEFAULT_STAGE.name ?? "";
+    const blueprint = this.getStageBlueprint(this.stageIndex + 1);
+    this.currentStageName = blueprint?.name ?? `Stage ${this.stageIndex + 1}`;
+    this.stageRewards = blueprint?.rewards ?? null;
+    this.bossConfig = blueprint?.bossConfig ?? null;
     this.currentWaveIsBoss = false;
 
     this.hero.resetVitals();
@@ -667,85 +686,47 @@ export class SimulationRuntime {
   }
 
   protected prepareNextWave(): boolean {
-    if (!this.stages.length) {
+    const stageNumber = this.stageIndex + 1;
+    let blueprint = this.getStageBlueprint(stageNumber);
+
+    if (!blueprint) {
       return false;
     }
 
-    if (this.stageIndex >= this.stages.length) {
-      this.stageIndex = this.stages.length - 1;
-    }
-
-    let stage = this.stages[this.stageIndex];
-
-    while (stage && stage.waves !== undefined && this.stageWaveCompleted >= stage.waves) {
-      this.stageIndex = Math.min(this.stageIndex + 1, this.stages.length - 1);
+    while (this.stageWaveCompleted >= blueprint.waves.length) {
+      this.stageIndex += 1;
       this.stageWaveCompleted = 0;
-      stage = this.stages[this.stageIndex];
-    }
-
-    if (!stage) {
-      return false;
-    }
-
-    const compositionList = stage.composition && stage.composition.length
-      ? stage.composition
-      : DEFAULT_STAGE.composition ?? [];
-
-    const waveIndex = this.stageWaveCompleted;
-    const isFinalWave = waveIndex === (stage.waves ?? compositionList.length) - 1;
-    const pattern = this.cloneWavePattern(
-      isFinalWave ? stage.finalBoss ?? DEFAULT_BOSS_COMPOSITION : compositionList[waveIndex % compositionList.length]
-    );
-
-    const queue: EnemyUnit[] = [];
-
-    Object.entries(pattern).forEach(([tier, count]) => {
-      const total = Math.max(0, Math.floor(count));
-      for (let i = 0; i < total; i += 1) {
-        const unit = this.pickEnemyFromTier(tier);
-        if (unit) {
-          queue.push(unit);
-        }
-      }
-    });
-
-    if (!queue.length) {
-      const fallbackOrder = isFinalWave ? ["boss", "medium", "small"] : ["small", "medium", "boss"];
-      let fallback: EnemyUnit | null = null;
-      for (const tier of fallbackOrder) {
-        fallback = this.pickEnemyFromTier(tier);
-        if (fallback) {
-          break;
-        }
-      }
-      if (!fallback) {
+      const nextStageNumber = this.stageIndex + 1;
+      blueprint = this.getStageBlueprint(nextStageNumber);
+      if (!blueprint) {
         return false;
       }
-      queue.push(fallback);
     }
 
-    this.currentWaveQueue = queue;
-    this.currentWaveNumber = this.totalWavesCompleted + 1;
-    this.currentStageName = stage.name ?? `Stage ${this.stageIndex + 1}`;
-    this.applyStageLoot(stage.lootTable);
-    this.currentWaveIsBoss = isFinalWave;
+    const wave = blueprint.waves[this.stageWaveCompleted];
+    if (!wave) {
+      return false;
+    }
 
+    this.stageRewards = blueprint.rewards;
+    this.bossConfig = blueprint.bossConfig;
+    this.currentStageName = blueprint.name;
+    this.applyStageLoot(blueprint.lootTableId);
+    this.currentWaveIsBoss = wave.isBoss;
+
+    this.currentWaveQueue = wave.enemies.map((enemy) => ({
+      id: enemy.id,
+      label: enemy.label,
+      tier: enemy.tier,
+      data: this.cloneData(enemy.data),
+    }));
+
+    if (!this.currentWaveQueue.length) {
+      return false;
+    }
+
+    this.currentWaveNumber = this.stageWaveCompleted + 1;
     return true;
-  }
-
-  protected pickEnemyFromTier(tier: string): EnemyUnit | null {
-    const pool = this.enemyPools[tier] ?? [];
-    if (!pool.length) {
-      return null;
-    }
-    const index = Math.floor(Math.random() * pool.length);
-    const source = pool[index];
-    return {
-      id: source.id,
-      label: source.label,
-      tier: source.tier,
-      data: this.cloneData(source.data),
-    };
   }
 
   protected completeWave() {
@@ -765,10 +746,14 @@ export class SimulationRuntime {
 
   protected getRewardConfig() {
     const table = this.getActiveLootTable();
+    const stageGold = Math.max(0, Math.round(this.stageRewards?.enemyGold ?? 0));
+    const stageXp = Math.max(0, Math.round(this.stageRewards?.enemyXp ?? 0));
+    const baseGoldMin = table.gold?.min ?? 0;
+    const baseGoldMax = table.gold?.max ?? table.gold?.min ?? 0;
     return {
-      xpPerWin: table.xpPerWin ?? 0,
-      goldMin: table.gold?.min ?? 0,
-      goldMax: table.gold?.max ?? table.gold?.min ?? 0,
+      xpPerWin: (table.xpPerWin ?? 0) + stageXp,
+      goldMin: stageGold + baseGoldMin,
+      goldMax: stageGold + baseGoldMax,
       materialDrops: this.cloneDrops(table.materialDrops),
       equipmentDrops: this.cloneEquipmentDrops(table.equipmentDrops),
       augmentDrops: this.cloneAugmentDrops(table.augmentDrops),
@@ -810,25 +795,15 @@ export class SimulationRuntime {
     }));
   }
 
-  protected cloneWavePattern(pattern?: StageComposition) {
-    if (!pattern) {
-      return {};
+  protected getStageBlueprint(stageNumber: number): StageBlueprint | null {
+    if (!this.stageGenerator) {
+      return null;
     }
-    return { ...pattern };
-  }
-
-  protected sanitiseStages(stages: StageDefinition[]): StageDefinition[] {
-    if (!stages?.length) {
-      return [DEFAULT_STAGE];
+    if (!this.stageCache.has(stageNumber)) {
+      const blueprint = this.stageGenerator.generateStage(stageNumber, this.enemyPools);
+      this.stageCache.set(stageNumber, blueprint);
     }
-    return stages.map((stage, index) => ({
-      id: stage.id ?? `stage-${index + 1}`,
-      name: stage.name ?? `Stage ${index + 1}`,
-      waves: Math.max(1, Math.floor(stage.waves ?? DEFAULT_STAGE.waves ?? 1)),
-      composition: stage.composition?.map((entry) => ({ ...entry })) ?? DEFAULT_STAGE.composition,
-      lootTable: stage.lootTable,
-      finalBoss: stage.finalBoss ? { ...stage.finalBoss } : DEFAULT_BOSS_COMPOSITION,
-    }));
+    return this.stageCache.get(stageNumber) ?? null;
   }
 
   protected sanitiseLootTable(table: LootTableConfig): LootTableConfig {

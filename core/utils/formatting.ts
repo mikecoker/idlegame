@@ -1,5 +1,9 @@
-import type { EncounterRewards } from "@core/combat/Encounter";
-import type { ItemDefinition, OwnedEquipment } from "../simulatorHarness";
+import type {
+  EncounterRewards,
+  RewardAugmentItem,
+  RewardEquipmentItem,
+} from "@core/combat/Encounter";
+import type { ItemDefinition, OwnedEquipment } from "@core/items/ItemDefinition";
 
 export function titleCase(value: string): string {
   if (!value) {
@@ -58,16 +62,22 @@ export function describeItemDetails(
   return parts.join(" • ") || "-";
 }
 
-export function formatEquipmentList(rewards: EncounterRewards): string {
-  return rewards.equipment
+export function formatEquipmentRewards(list: RewardEquipmentItem[] = []): string {
+  return list
     .map((entry) => `${entry.itemId} (${entry.rarity}) x${entry.quantity}`)
     .join(", ");
 }
 
+export function formatAugmentRewards(list: RewardAugmentItem[] = []): string {
+  return list.map((entry) => `${entry.augmentId} x${entry.quantity}`).join(", ");
+}
+
+export function formatEquipmentList(rewards: EncounterRewards): string {
+  return formatEquipmentRewards(rewards.equipment ?? []);
+}
+
 export function formatAugmentList(rewards: EncounterRewards): string {
-  return rewards.augments
-    .map((entry) => `${entry.augmentId} x${entry.quantity}`)
-    .join(", ");
+  return formatAugmentRewards(rewards.augments ?? []);
 }
 
 export function formatRewardsShort(rewards: EncounterRewards): string {
@@ -84,13 +94,13 @@ export function formatRewardsShort(rewards: EncounterRewards): string {
   if (materials) {
     parts.push(materials);
   }
-  const eq = formatEquipmentList(rewards);
-  if (eq) {
-    parts.push(`Eq: ${eq}`);
+  const equipment = formatEquipmentRewards(rewards.equipment ?? []);
+  if (equipment) {
+    parts.push(`Eq: ${equipment}`);
   }
-  const aug = formatAugmentList(rewards);
-  if (aug) {
-    parts.push(`Aug: ${aug}`);
+  const augments = formatAugmentRewards(rewards.augments ?? []);
+  if (augments) {
+    parts.push(`Aug: ${augments}`);
   }
   return parts.length ? parts.join("; ") : "-";
 }

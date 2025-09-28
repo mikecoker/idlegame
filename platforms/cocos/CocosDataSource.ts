@@ -6,11 +6,9 @@ import {
 } from "../../core/data/DataSource";
 import { LootTableConfig } from "../../core/economy/LootTable";
 import { CraftingRecipe, ItemDefinition } from "../../core/items/ItemDefinition";
-import {
-  EnemyUnit,
-  ProgressionData,
-  StageDefinition,
-} from "../../core/progression/Stage";
+import { EnemyUnit, StageDefinition } from "../../core/progression/Stage";
+import { ProgressionConfig } from "../../core/progression/ProgressionConfig";
+import type { ProgressionData } from "../../core/progression/Stage";
 
 export interface CocosHeroSource {
   asset: JsonAsset | null;
@@ -30,6 +28,7 @@ export interface CocosDataSourceConfig {
   heroes: CocosHeroSource[];
   enemies: CocosEnemySource[];
   progression: JsonAsset | null;
+  progressionConfig?: JsonAsset | null;
   lootTables: CocosLootSource[];
 }
 
@@ -102,6 +101,14 @@ export class CocosDataSource implements GameDataSource {
 
   async loadCraftingRecipes(): Promise<CraftingRecipe[]> {
     return [];
+  }
+
+  async loadProgressionConfig(): Promise<ProgressionConfig | null> {
+    const asset = this.config.progressionConfig;
+    if (!asset?.json) {
+      return null;
+    }
+    return this.clone(asset.json as ProgressionConfig);
   }
 
   protected cloneCharacter(asset: JsonAsset | null): CharacterData | null {

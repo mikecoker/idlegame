@@ -1,7 +1,6 @@
 import { SimulationRuntime, SimulationState } from "@core/runtime/SimulationRuntime";
 import {
   EncounterEvent,
-  EncounterRewardConfig,
   EncounterRewards,
   EncounterSummary,
   RewardAugmentItem,
@@ -28,6 +27,8 @@ import {
   StatBlockData,
 } from "@core/stats/StatBlock";
 import type { InventorySnapshot } from "@core/runtime/PlayerInventory";
+import { formatAugmentRewards, formatEquipmentRewards } from "@core/utils/formatting";
+import type { StageDefinition as CoreStageDefinition } from "@core/progression/Stage";
 
 export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
 export type { OwnedEquipment, CraftingRecipe, ItemDefinition };
@@ -42,14 +43,14 @@ interface Preset {
 interface LootTableRecord {
   id: string;
   label: string;
-  config: EncounterRewardConfig;
+  table: LootTableConfig;
 }
 
 interface StageComposition {
   [tier: string]: number;
 }
 
-interface StageDefinition {
+interface HarnessStageDefinition {
   name: string;
   waves: number;
   composition: StageComposition[];
@@ -68,7 +69,7 @@ interface EnemyManifestData {
 }
 
 interface ProgressionManifest {
-  stages: StageDefinition[];
+  stages: HarnessStageDefinition[];
 }
 
 interface CombatTelemetry {
@@ -311,7 +312,7 @@ export class SimulatorHarness {
   protected lastSummary: EncounterSummary | null = null;
 
   protected heroOptions: Preset[] = [];
-  protected stages: StageDefinition[] = [];
+  protected stages: HarnessStageDefinition[] = [];
   protected itemDefs: Map<string, ItemDefinition> = new Map();
   protected recipes: CraftingRecipe[] = [];
   protected recipeMap: Map<string, CraftingRecipe> = new Map();
@@ -323,12 +324,6 @@ export class SimulatorHarness {
   protected currentEnemyLabel = "";
 
   protected lootTables: LootTableRecord[] = [];
-  protected rewardConfig: EncounterRewardConfig = {
-    xpPerWin: 0,
-    equipmentDrops: [],
-    augmentDrops: [],
-    materialDrops: [],
-  };
   protected selectedLootId: string | null = null;
   protected selectedHeroId: string | null = null;
   protected materialsStock: Record<string, number> = {};
@@ -410,6 +405,8 @@ export class SimulatorHarness {
       return;
     }
 
+    this.ensureStageListCoverage(this.stageIndex);
+
     const heroOptions: ControlOption[] = this.heroOptions.map((option) => ({
       id: option.id,
       label: option.label,
@@ -428,7 +425,7 @@ export class SimulatorHarness {
       stageOptions,
       lootOptions,
       selectedHeroId: this.selectedHeroId ?? (heroOptions[0]?.id ?? null),
-      selectedStageIndex: Math.max(0, Math.min(this.stageIndex, Math.max(stageOptions.length - 1, 0))),
+      selectedStageIndex: this.stageIndex,
       selectedLootId: this.selectedLootId ?? (lootOptions[0]?.id ?? null),
       tickInterval: this.tickIntervalSeconds,
       isRunning: this.running,
@@ -653,7 +650,7 @@ export class SimulatorHarness {
       baseUrl,
       heroManifestUrl: "assets/data/heroes/manifest.json",
       enemyManifestUrl: "assets/data/enemies/manifest.json",
-      stageConfigUrl: "assets/data/encounters/progression.json",
+      progressionConfigUrl: "assets/data/progression/config.json",
       lootManifestUrl: "assets/data/loot/manifest.json",
       itemManifestUrl: "assets/data/items/manifest.json",
       craftingRecipesUrl: "assets/data/crafting/recipes.json",
@@ -683,20 +680,18 @@ export class SimulatorHarness {
     }));
 
     const stages = this.runtime.listStages();
-    this.stages = stages.map((stage, index) => ({
-      name: stage.name ?? `Stage ${index + 1}`,
-      waves: Math.max(1, Math.floor(stage.waves ?? 1)),
-      composition: stage.composition?.map((entry) => ({ ...entry })) ?? [],
-      lootTable: stage.lootTable ?? null,
-      finalBoss: stage.finalBoss ?? { boss: 1 },
-    }));
+    this.updateStageCatalog(stages);
 
     const lootTables = this.runtime.listLootTables();
-    this.lootTables = lootTables.map((table) => ({
-      id: table.id ?? table.name ?? "loot",
-      label: table.name ?? table.id ?? "Loot",
-      config: this.convertLootTableToRewardConfig(table),
-    }));
+    this.lootTables = lootTables.map((table) => {
+      const id = table.id ?? table.name ?? "loot";
+      const label = table.name ?? id;
+      return {
+        id,
+        label,
+        table: { ...table, id },
+      };
+    });
 
     if (!this.selectedHeroId && heroDefs.length) {
       this.selectedHeroId = heroDefs[0].id;
@@ -705,8 +700,6 @@ export class SimulatorHarness {
     if (!this.selectedLootId && this.lootTables.length) {
       this.selectedLootId = this.runtimeState?.lootTableId ?? this.lootTables[0].id;
     }
-
-    this.rewardConfig = this.findRewardConfig(this.selectedLootId);
   }
 
   protected seedDefinitionsFromRuntime() {
@@ -741,6 +734,7 @@ export class SimulatorHarness {
     this.enemy = state.enemy ?? null;
 
     this.stageIndex = state.stageIndex;
+    this.ensureStageListCoverage(this.stageIndex);
     const stageNameFallback = this.stages[state.stageIndex]?.name;
     this.currentStageName = state.stageName ?? stageNameFallback ?? this.currentStageName;
     this.currentWaveNumber = state.waveNumber;
@@ -751,7 +745,6 @@ export class SimulatorHarness {
 
     if (state.lootTableId && state.lootTableId !== this.selectedLootId) {
       this.selectedLootId = state.lootTableId;
-      this.rewardConfig = this.findRewardConfig(state.lootTableId);
     }
 
     const waveChanged =
@@ -883,44 +876,6 @@ export class SimulatorHarness {
     }
   }
 
-  protected convertLootTableToRewardConfig(table: LootTableConfig): EncounterRewardConfig {
-    const goldMin = Math.max(0, Math.floor(table.gold?.min ?? 0));
-    const goldMax = Math.max(goldMin, Math.floor(table.gold?.max ?? table.gold?.min ?? 0));
-
-    return {
-      xpPerWin: Math.max(0, Math.floor(table.xpPerWin ?? 0)),
-      goldMin,
-      goldMax,
-      materialDrops: table.materialDrops?.map((drop) => ({
-        id: drop.id,
-        chance: clamp01(drop.chance ?? 0),
-        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : 0,
-        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : 0,
-      })),
-      equipmentDrops: table.equipmentDrops?.map((drop) => ({
-        itemId: drop.itemId,
-        chance: clamp01(drop.chance ?? 0),
-        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
-        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
-        rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
-      })),
-      augmentDrops: table.augmentDrops?.map((drop) => ({
-        augmentId: drop.augmentId,
-        chance: clamp01(drop.chance ?? 0),
-        min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
-        max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
-      })),
-    };
-  }
-
-  protected findRewardConfig(lootId: string | null): EncounterRewardConfig {
-    if (!lootId) {
-      return this.rewardConfig;
-    }
-    const record = this.lootTables.find((table) => table.id === lootId);
-    return record?.config ?? this.rewardConfig;
-  }
-
   async init() {
     this.setStatusMessage("Loading data...");
 
@@ -932,7 +887,6 @@ export class SimulatorHarness {
     this.populateHeroSelect();
     this.populateStageSelect();
     this.populateLootSelect();
-    this.bindControls();
 
     const hasState = this.restoreState();
     this.resetEncounter(!hasState);
@@ -946,78 +900,6 @@ export class SimulatorHarness {
     this.updateCraftingAvailability();
   }
 
-  protected async loadLootTables(): Promise<LootTableRecord[]> {
-    try {
-      const response = await fetch(resolveDataUrl("assets/data/loot/manifest.json"), {
-        cache: "no-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const manifest = (await response.json()) as {
-        tables: Array<{
-          id: string;
-          label?: string;
-          path: string;
-        }>;
-      };
-
-      const records: LootTableRecord[] = [];
-      for (const entry of manifest.tables ?? []) {
-        try {
-          const resolvedPath = resolveDataUrl(entry.path);
-          const tableResponse = await fetch(resolveDataUrl(entry.path), {
-            cache: "no-cache",
-          });
-          if (!tableResponse.ok) {
-            throw new Error(`${tableResponse.status} ${tableResponse.statusText}`);
-          }
-          const table = (await tableResponse.json()) as any;
-          const config: EncounterRewardConfig = {
-            xpPerWin: Math.max(0, Math.floor(table.xpPerWin ?? 0)),
-            goldMin: Math.max(0, Math.floor(table.gold?.min ?? 0)),
-            goldMax: Math.max(
-              Math.max(0, Math.floor(table.gold?.min ?? 0)),
-              Math.floor(table.gold?.max ?? table.gold?.min ?? 0)
-            ),
-            materialDrops: (table.materialDrops ?? []).map((drop: any) => ({
-              id: drop.id,
-              chance: clamp01(drop.chance ?? 0),
-              min: Math.max(0, Math.floor(drop.min ?? 0)),
-              max: Math.max(0, Math.floor(drop.max ?? drop.min ?? 0)),
-            })),
-            equipmentDrops: (table.equipmentDrops ?? []).map((drop: any) => ({
-              itemId: drop.itemId,
-              chance: clamp01(drop.chance ?? 0),
-              min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
-              max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
-              rarityWeights: drop.rarityWeights ? { ...drop.rarityWeights } : undefined,
-            })),
-            augmentDrops: (table.augmentDrops ?? []).map((drop: any) => ({
-              augmentId: drop.augmentId,
-              chance: clamp01(drop.chance ?? 0),
-              min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
-              max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
-            })),
-          };
-          records.push({
-            id: entry.id,
-            label: entry.label ?? entry.id,
-            config,
-          });
-        } catch (err) {
-          console.warn(`[Harness] Failed to load loot table '${entry.id}'`, err);
-        }
-      }
-      return records.length ? records : [];
-    } catch (err) {
-      console.warn("[Harness] Failed to load loot manifest", err);
-      return [];
-    }
-  }
-
-  protected bindControls() {}
-
   protected populateHeroSelect() {
     if (!this.selectedHeroId && this.heroOptions.length) {
       this.selectedHeroId = this.heroOptions[0].id;
@@ -1028,6 +910,29 @@ export class SimulatorHarness {
 
   protected populateStageSelect() {
     this.notifyControlState();
+  }
+
+  protected updateStageCatalog(stages: CoreStageDefinition[]) {
+    this.stages = stages.map((stage, index) => ({
+      id: stage.id ?? `stage-${index + 1}`,
+      name: stage.name ?? `Stage ${index + 1}`,
+      waves: Math.max(1, Math.floor(stage.waves ?? 1)),
+      composition: stage.composition?.map((entry) => ({ ...entry })) ?? [],
+      lootTable: stage.lootTable ?? null,
+      finalBoss: stage.finalBoss ? { ...stage.finalBoss } : undefined,
+    }));
+  }
+
+  protected ensureStageListCoverage(targetIndex: number) {
+    if (!this.runtime) {
+      return;
+    }
+    const remaining = this.stages.length - targetIndex;
+    if (remaining > 5) {
+      return;
+    }
+    const stages = this.runtime.listStages();
+    this.updateStageCatalog(stages);
   }
 
   protected populateLootSelect() {
@@ -1696,12 +1601,6 @@ export class SimulatorHarness {
         return;
       }
       this.selectedLootId = null;
-      this.rewardConfig = {
-        xpPerWin: 0,
-        equipmentDrops: [],
-        augmentDrops: [],
-        materialDrops: [],
-      };
       if (options.notifyRuntime) {
         this.runtime?.setLootTableId(null);
       }
@@ -1716,20 +1615,6 @@ export class SimulatorHarness {
     }
 
     this.selectedLootId = record.id;
-    this.rewardConfig = {
-      xpPerWin: record.config.xpPerWin ?? 0,
-      goldMin: record.config.goldMin ?? 0,
-      goldMax: record.config.goldMax ?? record.config.goldMin ?? 0,
-      materialDrops: record.config.materialDrops
-        ? record.config.materialDrops.map((drop) => ({ ...drop }))
-        : [],
-      equipmentDrops: record.config.equipmentDrops
-        ? record.config.equipmentDrops.map((drop) => ({ ...drop }))
-        : [],
-      augmentDrops: record.config.augmentDrops
-        ? record.config.augmentDrops.map((drop) => ({ ...drop }))
-        : [],
-    };
 
     if (options.notifyRuntime) {
       this.runtime?.setLootTableId(record.id);
@@ -1796,10 +1681,10 @@ export class SimulatorHarness {
     this.refreshInventorySnapshot();
 
     if (rewards.equipment && rewards.equipment.length) {
-      this.pushLog(`[Loot] Equipment: ${this.formatEquipmentList(rewards.equipment)}`);
+      this.pushLog(`[Loot] Equipment: ${formatEquipmentRewards(rewards.equipment)}`);
     }
     if (rewards.augments && rewards.augments.length) {
-      this.pushLog(`[Loot] Augments: ${this.formatAugmentList(rewards.augments)}`);
+      this.pushLog(`[Loot] Augments: ${formatAugmentRewards(rewards.augments)}`);
     }
 
     if (this.hero && rewards.xp > 0) {
@@ -1938,16 +1823,6 @@ export class SimulatorHarness {
       .join(", ");
   }
 
-  protected formatEquipmentList(list: RewardEquipmentItem[] = []): string {
-    return list
-      .map((entry) => `${entry.itemId} (${entry.rarity}) x${entry.quantity}`)
-      .join(", ");
-  }
-
-  protected formatAugmentList(list: RewardAugmentItem[] = []): string {
-    return list.map((entry) => `${entry.augmentId} x${entry.quantity}`).join(", ");
-  }
-
   protected formatHistoryRewards(rewards: EncounterRewards): string {
     const parts: string[] = [];
     if (rewards.xp) {
@@ -1960,11 +1835,11 @@ export class SimulatorHarness {
     if (mats) {
       parts.push(mats);
     }
-    const equipment = this.formatEquipmentList(rewards.equipment ?? []);
+    const equipment = formatEquipmentRewards(rewards.equipment ?? []);
     if (equipment) {
       parts.push(`Eq: ${equipment}`);
     }
-    const augments = this.formatAugmentList(rewards.augments ?? []);
+    const augments = formatAugmentRewards(rewards.augments ?? []);
     if (augments) {
       parts.push(`Aug: ${augments}`);
     }
@@ -2244,9 +2119,10 @@ export class SimulatorHarness {
   }
 
   selectStage(index: number) {
-    const clamped = Math.max(0, Math.min(index, this.stages.length - 1));
-    this.stageIndex = clamped;
-    this.runtime?.setStageIndex(clamped);
+    const target = Math.max(0, index);
+    this.stageIndex = target;
+    this.ensureStageListCoverage(target);
+    this.runtime?.setStageIndex(target);
     this.resetEncounter(false);
   }
 

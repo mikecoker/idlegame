@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import type { EncounterHistoryEntry } from "../simulatorHarness";
-import { formatRewardsShort } from "../utils/formatting";
+import { formatRewardsShort } from "@core/utils/formatting";
 
 interface HistoryPanelProps {
   history: EncounterHistoryEntry[];

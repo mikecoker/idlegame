@@ -6,6 +6,7 @@ import {
 import { LootTableConfig } from "../../core/economy/LootTable";
 import { CraftingRecipe, ItemDefinition } from "../../core/items/ItemDefinition";
 import { EnemyUnit, StageDefinition } from "../../core/progression/Stage";
+import { ProgressionConfig } from "../../core/progression/ProgressionConfig";
 
 export interface WebHeroManifestEntry {
   id: string;
@@ -55,7 +56,7 @@ export interface WebDataSourceOptions {
   baseUrl?: string;
   heroManifestUrl: string;
   enemyManifestUrl: string;
-  stageConfigUrl: string;
+  progressionConfigUrl: string;
   lootManifestUrl: string;
   itemManifestUrl: string;
   craftingRecipesUrl: string;
@@ -128,10 +129,8 @@ export class WebDataSource implements GameDataSource {
   }
 
   async loadStages(): Promise<StageDefinition[]> {
-    const data = await this.loadJson<{ stages?: StageDefinition[] }>(
-      this.options.stageConfigUrl
-    );
-    return data?.stages?.length ? data.stages.map((stage) => ({ ...stage })) : [];
+    // Retained for compatibility; procedural generation supplies stages at runtime.
+    return [];
   }
 
   async loadLootTables(): Promise<LootTableConfig[]> {
@@ -193,6 +192,18 @@ export class WebDataSource implements GameDataSource {
       ...recipe,
       cost: { ...(recipe.cost ?? {}) },
     }));
+  }
+
+  async loadProgressionConfig(): Promise<ProgressionConfig | null> {
+    try {
+      const config = await this.loadJson<ProgressionConfig>(
+        this.options.progressionConfigUrl
+      );
+      return config ?? null;
+    } catch (err) {
+      console.warn("[WebDataSource] Failed to load progression config", err);
+      return null;
+    }
   }
 
   protected resolveUrl(path: string): string {

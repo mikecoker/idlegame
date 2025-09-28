@@ -25,7 +25,7 @@ import RewardsPanel, { RewardsRow } from "./components/RewardsPanel";
 import StatusPanel from "./components/StatusPanel";
 import TabStrip, { TabKey } from "./components/TabStrip";
 import TelemetryPanel from "./components/TelemetryPanel";
-import { formatAugmentList, formatEquipmentList } from "./utils/formatting";
+import { formatAugmentList, formatEquipmentList } from "@core/utils/formatting";
 import "./styles/App.css";
 
 const LOG_LIMIT = 300;

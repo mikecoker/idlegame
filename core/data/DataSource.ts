@@ -2,6 +2,7 @@ import type { CharacterData } from "../characters/Character";
 import type { CraftingRecipe, ItemDefinition } from "../items/ItemDefinition";
 import type { LootTableConfig } from "../economy/LootTable";
 import type { EnemyUnit, StageDefinition } from "../progression/Stage";
+import type { ProgressionConfig } from "../progression/ProgressionConfig";
 
 export interface HeroDefinition {
   id: string;
@@ -16,6 +17,7 @@ export interface GameDataSnapshot {
   lootTables: LootTableConfig[];
   items?: ItemDefinition[];
   recipes?: CraftingRecipe[];
+  progressionConfig?: ProgressionConfig;
 }
 
 export interface GameDataSource {
@@ -25,6 +27,7 @@ export interface GameDataSource {
   loadLootTables(): Promise<LootTableConfig[]>;
   loadItemDefinitions(): Promise<ItemDefinition[]>;
   loadCraftingRecipes(): Promise<CraftingRecipe[]>;
+  loadProgressionConfig(): Promise<ProgressionConfig | null>;
 }
 
 export class StaticDataSource implements GameDataSource {
@@ -52,5 +55,9 @@ export class StaticDataSource implements GameDataSource {
 
   async loadCraftingRecipes(): Promise<CraftingRecipe[]> {
     return this.snapshot.recipes ?? [];
+  }
+
+  async loadProgressionConfig(): Promise<ProgressionConfig | null> {
+    return this.snapshot.progressionConfig ?? null;
   }
 }
