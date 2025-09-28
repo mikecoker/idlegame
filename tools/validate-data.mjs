@@ -10,6 +10,7 @@ const projectRoot = resolve(__dirname, "..");
 const HERO_MANIFEST_PATH = "assets/data/heroes/manifest.json";
 const ENEMY_MANIFEST_PATH = "assets/data/enemies/manifest.json";
 const PROGRESSION_PATH = "assets/data/encounters/progression.json";
+const PROGRESSION_CONFIG_PATH = "assets/data/progression/config.json";
 const LOOT_MANIFEST_PATH = "assets/data/loot/manifest.json";
 
 const ZHeroManifest = z.object({
@@ -48,6 +49,72 @@ const ZStageDefinition = z.object({
 
 const ZProgressionManifest = z.object({
   stages: z.array(ZStageDefinition).min(1, "At least one stage must be defined"),
+});
+
+const ZScalingFormula = z.object({
+  base: z.number().min(0),
+  exponent: z.number().positive().optional(),
+  perStage: z.number().min(0).optional(),
+});
+
+const ZEnemiesPerWave = z.object({
+  base: z.number().int().positive(),
+  perFiveStages: z.number().int().nonnegative(),
+});
+
+const ZEnemyScalingConfig = z.object({
+  hp: ZScalingFormula,
+  attack: ZScalingFormula,
+  defense: ZScalingFormula,
+  speed: ZScalingFormula,
+});
+
+const ZBossConfig = z.object({
+  hp: ZScalingFormula,
+  attack: ZScalingFormula,
+  defense: ZScalingFormula,
+  speed: z.number().positive(),
+  timerSeconds: z.number().positive(),
+  enrage: z.object({
+    hpPercent: z.number().min(0).max(1),
+    attackMultiplier: z.number().min(1),
+  }),
+});
+
+const ZRewardScaling = z.object({
+  gold: ZScalingFormula,
+  xp: ZScalingFormula,
+});
+
+const ZBossRewardScaling = z.object({
+  gold: ZScalingFormula,
+  shards: ZScalingFormula,
+  gemChance: ZScalingFormula,
+});
+
+const ZLootRouting = z.object({
+  default: z.string().min(1),
+  thresholds: z
+    .array(
+      z.object({
+        stage: z.number().int().positive(),
+        table: z.string().min(1),
+      })
+    )
+    .optional(),
+});
+
+const ZProgressionConfig = z.object({
+  wavesPerStage: z.number().int().positive(),
+  enemiesPerWave: ZEnemiesPerWave,
+  enemyScaling: ZEnemyScalingConfig,
+  boss: ZBossConfig,
+  rewards: z.object({
+    enemy: ZRewardScaling,
+    boss: ZBossRewardScaling,
+  }),
+  lootTables: ZLootRouting,
+  firstClearBonusPercent: z.number().min(0).max(0.5).optional(),
 });
 
 const ZLootManifest = z.object({
@@ -166,11 +233,26 @@ async function validateLootTables() {
   return `Validated ${validated} loot tables.`;
 }
 
+async function validateProgressionConfig() {
+  const data = await loadJson(PROGRESSION_CONFIG_PATH);
+  const config = ZProgressionConfig.parse(data);
+  if (config.lootTables.thresholds) {
+    const sorted = [...config.lootTables.thresholds].sort((a, b) => a.stage - b.stage);
+    for (let i = 0; i < sorted.length; i += 1) {
+      if (sorted[i] !== config.lootTables.thresholds[i]) {
+        throw new Error("Progression loot thresholds must be sorted by ascending stage");
+      }
+    }
+  }
+  return `Validated progression config: waves=${config.wavesPerStage}, first clear bonus=${(config.firstClearBonusPercent ?? 0) * 100}%`;
+}
+
 async function main() {
   const tasks = [
     ["Hero manifest", validateHeroManifest],
     ["Enemy manifest", validateEnemyManifest],
     ["Stage progression", validateProgression],
+    ["Progression config", validateProgressionConfig],
     ["Loot tables", validateLootTables],
   ];
 
