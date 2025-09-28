@@ -1,3 +1,4 @@
+import { getRarityMultiplier, getUpgradeMultiplier } from "@core/items/ItemDefinition";
 import type {
   EncounterRewards,
   RewardAugmentItem,
@@ -47,12 +48,18 @@ export function describeItemDetails(
     return `Item ID: ${owned.itemId}`;
   }
   const parts: string[] = [];
+  const rarityMultiplier = getRarityMultiplier(owned.rarity);
+  const upgradeMultiplier = getUpgradeMultiplier(owned.upgradeLevel);
+  const totalMultiplier = rarityMultiplier * upgradeMultiplier;
+
   if (definition.type === "weapon" && definition.weapon) {
-    parts.push(
-      `Damage ${definition.weapon.minDamage}-${definition.weapon.maxDamage} @ ${definition.weapon.delay}s`
-    );
+    const minDamage = Math.max(1, Math.round(definition.weapon.minDamage * totalMultiplier));
+    const maxDamage = Math.max(minDamage, Math.round(definition.weapon.maxDamage * totalMultiplier));
+    const delay = definition.weapon.delay;
+    parts.push(`Damage ${minDamage}-${maxDamage} @ ${delay}s`);
   } else if (definition.type === "armor" && definition.armor) {
-    parts.push(`Armor ${definition.armor.armor}`);
+    const armor = Math.max(0, Math.round((definition.armor.armor ?? 0) * totalMultiplier));
+    parts.push(`Armor ${armor}`);
   } else {
     parts.push(titleCase(definition.type));
   }

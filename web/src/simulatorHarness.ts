@@ -3,6 +3,8 @@ import {
   SimulationState,
   ProgressionSnapshot,
   PartySummary,
+  PartyConfiguration,
+  EnemyRosterEntry,
 } from "@core/runtime/SimulationRuntime";
 import {
   EncounterEvent,
@@ -107,6 +109,7 @@ interface PersistedState {
   clearedStages?: number[];
   statBonusMultiplier?: number;
   progressionSnapshot?: ProgressionSnapshot;
+  partyOrder?: Array<string | null>;
   timestamp: number;
 }
 
@@ -121,6 +124,19 @@ export interface EncounterHistoryEntry {
   rewards: EncounterRewards;
 }
 
+export interface VitalSnapshot {
+  id: string;
+  label: string;
+  current: number;
+  max: number;
+  alive: boolean;
+  level?: number;
+  xpPercent?: number;
+  potionId?: string | null;
+  canUsePotion?: boolean;
+  isBoss?: boolean;
+}
+
 export interface StatusPayload {
   label: string;
   stage: string;
@@ -131,10 +147,8 @@ export interface StatusPayload {
   heroDamage: number;
   enemyDamage: number;
   winner: string | null;
-  heroHealth: number;
-  heroMaxHealth: number;
-  enemyHealth: number;
-  enemyMaxHealth: number;
+  partyVitals: VitalSnapshot[];
+  enemyVitals: VitalSnapshot[];
   bossTimerRemaining: number;
   bossTimerTotal: number;
   bossEnraged: boolean;
@@ -245,6 +259,14 @@ export interface StageOption {
   label: string;
 }
 
+export interface PartySlotControl {
+  index: number;
+  heroId: string | null;
+  heroLabel: string | null;
+  unlocked: boolean;
+  unlockStage: number;
+}
+
 export interface ControlStatePayload {
   heroOptions: ControlOption[];
   stageOptions: StageOption[];
@@ -255,6 +277,9 @@ export interface ControlStatePayload {
   tickInterval: number;
   isRunning: boolean;
   autoResume: boolean;
+  partySlots: PartySlotControl[];
+  unlockedPartySlots: number;
+  maxPartySlots: number;
 }
 
 export interface TelemetryRow {
@@ -332,6 +357,8 @@ export class SimulatorHarness {
   protected partyIds: (string | null)[] = [];
   protected partySummary: PartySummary | null = null;
   protected lastSummary: EncounterSummary | null = null;
+  protected partyConfig: PartyConfiguration | null = null;
+  protected enemyRoster: EnemyRosterEntry[] = [];
 
   protected heroOptions: Preset[] = [];
   protected stages: HarnessStageDefinition[] = [];
@@ -428,6 +455,21 @@ export class SimulatorHarness {
     this.listeners.onCrafting({ equipment, consumables, materials });
   }
 
+  protected refreshPartyConfiguration(): PartyConfiguration | null {
+    if (!this.runtime) {
+      this.partyConfig = null;
+      return null;
+    }
+    const config = this.runtime.getPartyConfiguration();
+    this.partyConfig = config;
+    return config;
+  }
+
+  protected resolveHeroLabel(heroId: string): string {
+    const match = this.heroOptions.find((option) => option.id === heroId);
+    return match?.label ?? heroId;
+  }
+
   protected notifyControlState() {
     if (!this.listeners.onControls) {
       return;
@@ -448,16 +490,34 @@ export class SimulatorHarness {
       label: table.label ?? table.id,
     }));
 
+    const config = this.partyConfig ?? this.refreshPartyConfiguration();
+    const partySlots: PartySlotControl[] = config
+      ? config.slots.map((slot) => ({
+          index: slot.index,
+          heroId: slot.heroId,
+          heroLabel: slot.heroId ? this.resolveHeroLabel(slot.heroId) : null,
+          unlocked: slot.unlocked,
+          unlockStage: slot.unlockStage,
+        }))
+      : [];
+
+    const selectedHero =
+      this.selectedHeroId ??
+      (partySlots.find((slot) => slot.index === 0 && slot.heroId)?.heroId ?? heroOptions[0]?.id ?? null);
+
     const payload: ControlStatePayload = {
       heroOptions,
       stageOptions,
       lootOptions,
-      selectedHeroId: this.selectedHeroId ?? (heroOptions[0]?.id ?? null),
+      selectedHeroId: selectedHero,
       selectedStageIndex: this.stageIndex,
       selectedLootId: this.selectedLootId ?? (lootOptions[0]?.id ?? null),
       tickInterval: this.tickIntervalSeconds,
       isRunning: this.running,
       autoResume: this.resumeAfterVictory,
+      partySlots,
+      unlockedPartySlots: config?.unlockedSlots ?? 0,
+      maxPartySlots: config?.maxSlots ?? 0,
     };
 
     this.listeners.onControls(payload);
@@ -707,6 +767,7 @@ export class SimulatorHarness {
 
     const initialState = this.runtime.getState();
     this.applyRuntimeState(initialState);
+    this.refreshPartyConfiguration();
 
     const heroDefs = this.runtime.listHeroes();
     this.heroOptions = heroDefs.map((hero) => ({
@@ -767,11 +828,14 @@ export class SimulatorHarness {
     const previousStage = previousState?.stageIndex ?? -1;
 
     this.runtimeState = state;
+    this.selectedHeroId = state.heroId;
 
     this.party = state.party ?? [];
     this.partyIds = state.partyIds ?? [];
     this.enemyParty = state.enemyParty ?? [];
     this.partySummary = state.partySummary ?? null;
+    this.enemyRoster = state.enemyRoster ?? [];
+    this.refreshPartyConfiguration();
 
     this.hero = this.party[0] ?? state.hero ?? null;
     this.enemy = this.enemyParty[0] ?? state.enemy ?? null;
@@ -1076,6 +1140,7 @@ export class SimulatorHarness {
       this.refreshInventorySnapshot();
     }
 
+    this.refreshPartyConfiguration();
     this.updateCraftingAvailability();
     this.notifyControlState();
     this.persistState();
@@ -1602,11 +1667,13 @@ export class SimulatorHarness {
     return result.success;
   }
 
-  protected useConsumable(consumableId: string): boolean {
+  protected useConsumable(consumableId: string, heroId?: string | null): boolean {
     if (!this.runtime) {
       return false;
     }
-    const result = this.runtime.useConsumableItem(consumableId);
+    const result = heroId
+      ? this.runtime.useConsumableItem(consumableId, { targetHeroId: heroId })
+      : this.runtime.useConsumableItem(consumableId);
     if (result.success || result.consumablesChanged) {
       this.refreshInventorySnapshot();
       this.persistState();
@@ -1786,10 +1853,83 @@ export class SimulatorHarness {
       : "Idle";
 
     const summary = this.lastSummary;
-    const heroHealth = this.hero ? Math.max(0, this.hero.health) : 0;
-    const heroMaxHealth = this.hero ? Math.max(0, this.hero.maxHealth) : 0;
-    const enemyHealth = this.enemy ? Math.max(0, this.enemy.health) : 0;
-    const enemyMaxHealth = this.enemy ? Math.max(0, this.enemy.maxHealth) : 0;
+    const potionId = this.getPreferredHealingConsumable();
+    const potionAvailable = potionId ? (this.consumables[potionId] ?? 0) : 0;
+    const partyVitals: VitalSnapshot[] = this.party.length
+      ? this.party.map((member, index) => {
+          const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null) ?? `ally-${index}`;
+          const label = this.getPartyMemberLabel(index);
+          const current = Math.max(0, member.health);
+          const max = Math.max(0, member.maxHealth);
+          const alive = member.isAlive;
+          const xpPercent = member.experienceProgress ?? 0;
+          const canUsePotion = Boolean(potionId && potionAvailable > 0 && alive && current < max);
+          return {
+            id: heroId ?? `ally-${index}`,
+            label,
+            current,
+            max,
+            alive,
+            level: member.level,
+            xpPercent,
+            potionId: potionId ?? null,
+            canUsePotion,
+          };
+        })
+      : this.hero
+      ? [
+          {
+            id: this.selectedHeroId ?? "hero",
+            label:
+              this.heroOptions.find((option) => option.id === this.selectedHeroId)?.label ??
+              (this.selectedHeroId ?? "Hero"),
+            current: Math.max(0, this.hero.health),
+            max: Math.max(0, this.hero.maxHealth),
+            alive: this.hero.isAlive,
+            level: this.hero.level,
+            xpPercent: this.hero.experienceProgress ?? 0,
+            potionId: potionId ?? null,
+            canUsePotion: Boolean(
+              potionId && potionAvailable > 0 && this.hero.isAlive && this.hero.health < this.hero.maxHealth
+            ),
+          },
+        ]
+      : [];
+
+    const roster = this.enemyRoster;
+    const enemyVitals: VitalSnapshot[] = this.enemyParty.length
+      ? this.enemyParty.map((foe, index) => {
+          const info = roster[index] ?? { id: `enemy-${index}`, label: `Enemy ${index + 1}` };
+          return {
+            id: info.id,
+            label: info.label,
+            current: Math.max(0, foe.health),
+            max: Math.max(0, foe.maxHealth),
+            alive: foe.isAlive,
+            isBoss: this.currentWaveIsBoss && index === 0,
+          };
+        })
+      : roster.length
+      ? roster.map((info, index) => ({
+          id: info.id,
+          label: info.label,
+          current: 0,
+          max: 0,
+          alive: false,
+          isBoss: this.currentWaveIsBoss && index === 0,
+        }))
+      : this.enemy
+      ? [
+          {
+            id: "enemy",
+            label: this.currentEnemyLabel || "Enemy",
+            current: Math.max(0, this.enemy.health),
+            max: Math.max(0, this.enemy.maxHealth),
+            alive: this.enemy.isAlive,
+            isBoss: this.currentWaveIsBoss,
+          },
+        ]
+      : [];
 
     const payload: StatusPayload = {
       label: `${statusLabel} • tick ${this.tickIntervalSeconds.toFixed(2)}s`,
@@ -1801,10 +1941,8 @@ export class SimulatorHarness {
       heroDamage: summary?.totalDamageFromSource ?? 0,
       enemyDamage: summary?.totalDamageFromTarget ?? 0,
       winner: summary?.victor ?? null,
-      heroHealth,
-      heroMaxHealth,
-      enemyHealth,
-      enemyMaxHealth,
+      partyVitals,
+      enemyVitals,
       bossTimerRemaining: this.bossTimerRemaining,
       bossTimerTotal: this.bossTimerTotal,
       bossEnraged: this.bossEnraged,
@@ -1961,6 +2099,16 @@ export class SimulatorHarness {
     return `Hero ${index + 1}`;
   }
 
+  protected getPreferredHealingConsumable(): string | null {
+    const priorities = ["greater-healing-potion", "healing-potion"];
+    for (const id of priorities) {
+      if ((this.consumables[id] ?? 0) > 0) {
+        return id;
+      }
+    }
+    return null;
+  }
+
   protected formatMaterials(materials: Record<string, number>): string {
     return Object.entries(materials)
       .map(([id, qty]) => `${id} x${qty}`)
@@ -2056,6 +2204,9 @@ export class SimulatorHarness {
         partyProgress[heroId] = this.hero.serializeProgress();
       }
 
+      const config = this.partyConfig ?? (this.runtime ? this.runtime.getPartyConfiguration() : null);
+      const partyOrder = config ? config.slots.map((slot) => slot.heroId ?? null) : undefined;
+
       const primaryHeroProgress = this.selectedHeroId
         ? partyProgress[this.selectedHeroId] ?? (this.hero ? this.hero.serializeProgress() : undefined)
         : this.hero
@@ -2063,7 +2214,7 @@ export class SimulatorHarness {
         : undefined;
 
       const state: PersistedState = {
-        version: 3,
+        version: 4,
         heroId,
         stageIndex: this.stageIndex,
         totalWavesCompleted: this.totalWavesCompleted,
@@ -2073,6 +2224,7 @@ export class SimulatorHarness {
         lastRewards: normalizeRewards(this.lastRewards),
         heroProgress: primaryHeroProgress,
         partyProgress: Object.keys(partyProgress).length ? partyProgress : undefined,
+        partyOrder: partyOrder ? [...partyOrder] : undefined,
         history: this.history.slice(-40),
         historyCounter: this.historyCounter,
         inventorySnapshot: snapshot,
@@ -2097,13 +2249,25 @@ export class SimulatorHarness {
         return false;
       }
       const state = JSON.parse(raw) as PersistedState;
-      if (!state || (state.version !== 2 && state.version !== 3)) {
+      if (!state || (state.version !== 2 && state.version !== 3 && state.version !== 4)) {
         window.localStorage.removeItem(STORAGE_KEY);
         return false;
       }
       if (this.heroOptions.some((option) => option.id === state.heroId)) {
         this.selectedHeroId = state.heroId;
         this.runtime?.setHero(state.heroId, false);
+      }
+
+      if (Array.isArray(state.partyOrder) && this.runtime) {
+        this.runtime.setPartyOrder(state.partyOrder, { resetEncounter: false });
+        this.refreshPartyConfiguration();
+        const leaderId =
+          this.partyConfig?.slots.find((slot) => slot.index === 0)?.heroId ??
+          state.partyOrder.find((id): id is string => Boolean(id)) ??
+          this.selectedHeroId;
+        if (leaderId) {
+          this.selectedHeroId = leaderId;
+        }
       }
 
       this.selectedLootId = state.lootTableId ?? null;
@@ -2236,8 +2400,8 @@ export class SimulatorHarness {
     return this.socketAugment(instanceId);
   }
 
-  useConsumableItem(consumableId: string): boolean {
-    return this.useConsumable(consumableId);
+  useConsumableItem(consumableId: string, heroId?: string | null): boolean {
+    return this.useConsumable(consumableId, heroId);
   }
 
   selectEquipmentRecipe(id: string | null) {
@@ -2304,14 +2468,92 @@ export class SimulatorHarness {
     this.persistState();
   }
 
+  assignPartySlot(
+    slotIndex: number,
+    heroId: string | null,
+    options: { fresh?: boolean; restart?: boolean } = {}
+  ) {
+    if (!this.runtime) {
+      return;
+    }
+    const config = this.partyConfig ?? this.refreshPartyConfiguration();
+    const slot = config?.slots[slotIndex];
+    if (!slot || !slot.unlocked) {
+      console.warn(`[Harness] Party slot ${slotIndex + 1} is locked or unavailable.`);
+      return;
+    }
+    const fresh = options.fresh ?? false;
+    this.runtime.setPartySlot(slotIndex, heroId, {
+      refreshRoster: fresh,
+      resetEncounter: false,
+    });
+    this.refreshPartyConfiguration();
+    this.selectedHeroId =
+      this.partyConfig?.slots.find((entry) => entry.index === 0)?.heroId ?? this.selectedHeroId;
+    if (options.restart === false) {
+      this.notifyControlState();
+      this.persistState();
+      return;
+    }
+    this.resetEncounter(fresh);
+  }
+
+  clearPartySlot(slotIndex: number, options: { restart?: boolean } = {}) {
+    this.assignPartySlot(slotIndex, null, { fresh: false, restart: options.restart });
+  }
+
+  useHealthPotionOnHero(heroId: string): boolean {
+    const potionId = this.getPreferredHealingConsumable();
+    if (!potionId) {
+      this.pushLog("[Consumable] No healing potions available.");
+      return false;
+    }
+    const success = this.useConsumable(potionId, heroId);
+    if (!success) {
+      this.pushLog(`[Consumable] Failed to use ${potionId}.`);
+    }
+    return success;
+  }
+
+  swapPartySlots(
+    sourceIndex: number,
+    targetIndex: number,
+    options: { restart?: boolean } = {}
+  ) {
+    if (!this.runtime) {
+      return;
+    }
+    if (sourceIndex === targetIndex) {
+      return;
+    }
+    const config = this.partyConfig ?? this.refreshPartyConfiguration();
+    const source = config?.slots[sourceIndex];
+    const target = config?.slots[targetIndex];
+    if (!source?.unlocked || !target?.unlocked) {
+      console.warn(
+        `[Harness] Cannot swap party slots ${sourceIndex + 1} and ${targetIndex + 1}.`
+      );
+      return;
+    }
+    this.runtime.swapPartySlots(sourceIndex, targetIndex, { resetEncounter: false });
+    this.refreshPartyConfiguration();
+    this.selectedHeroId =
+      this.partyConfig?.slots.find((entry) => entry.index === 0)?.heroId ?? this.selectedHeroId;
+    if (options.restart === false) {
+      this.notifyControlState();
+      this.persistState();
+      return;
+    }
+    this.resetEncounter(false);
+  }
+
   selectHero(heroId: string) {
     if (!this.heroOptions.some((preset) => preset.id === heroId)) {
       console.warn(`[Harness] Unknown hero '${heroId}'`);
       return;
     }
     this.selectedHeroId = heroId;
-    this.runtime?.setHero(heroId, true);
-    this.resetEncounter(true);
+    this.assignPartySlot(0, heroId, { fresh: true });
   }
 
   selectStage(index: number) {
@@ -2367,7 +2609,10 @@ export class SimulatorHarness {
     }
 
     const slotKey = definition.slot as EquippedSlotKey;
-    const baseRows = this.buildStatRows(this.hero);
+    const baselineLoadout = this.cloneLoadout();
+    const baselineHero = this.createHeroClone(baselineLoadout) ?? this.hero;
+    const baseRows = this.buildStatRows(baselineHero);
+
     const loadout = this.cloneLoadout({ [slotKey]: ownedSource });
     const previewHero = this.createHeroClone(loadout);
     if (!previewHero) {

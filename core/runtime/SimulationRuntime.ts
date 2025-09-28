@@ -57,6 +57,24 @@ export interface PartySummary {
   totalDps: number;
 }
 
+export interface PartySlotState {
+  index: number;
+  heroId: string | null;
+  unlocked: boolean;
+  unlockStage: number;
+}
+
+export interface PartyConfiguration {
+  maxSlots: number;
+  unlockedSlots: number;
+  slots: PartySlotState[];
+}
+
+export interface EnemyRosterEntry {
+  id: string;
+  label: string;
+}
+
 export interface SimulationState {
   heroId: string | null;
   stageIndex: number;
@@ -76,6 +94,7 @@ export interface SimulationState {
   enemyParty: Character[];
   partyIds: (string | null)[];
   partySummary: PartySummary;
+  enemyRoster: EnemyRosterEntry[];
 }
 
 export interface ProgressionSnapshot {
@@ -92,7 +111,7 @@ export class SimulationRuntime {
   protected enemyPools: Record<string, EnemyUnit[]> = { small: [], medium: [], boss: [] };
   protected progressionConfig: ProgressionConfig | null = null;
   protected stageGenerator: StageGenerator | null = null;
-  protected stageCache: Map<number, StageBlueprint> = new Map();
+  protected stageCache: Map<string, StageBlueprint> = new Map();
   protected stageRewards: StageRewardsSummary | null = null;
   protected bossConfig: BossEncounterConfig | null = null;
   protected bossTimerTotal = 0;
@@ -111,6 +130,7 @@ export class SimulationRuntime {
   protected stageWaveCompleted = 0;
   protected totalWavesCompleted = 0;
   protected currentWaveUnits: EnemyUnit[] = [];
+  protected enemyRoster: EnemyRosterEntry[] = [];
   protected currentWaveNumber = 0;
   protected currentStageName = "";
   protected currentEnemyLabel = "";
@@ -238,6 +258,7 @@ export class SimulationRuntime {
       enemyParty: this.enemyParty,
       partyIds: this.selectedHeroIds.slice(0, this.party.length),
       partySummary: this.getPartySummary(),
+      enemyRoster: this.enemyRoster.map((entry) => ({ ...entry })),
     };
   }
 
@@ -286,14 +307,142 @@ export class SimulationRuntime {
   }
 
   setHero(heroId: string, fresh = true) {
-    this.selectedHeroId = heroId;
-    if (!this.selectedHeroIds.length) {
-      this.updatePartyUnlocks();
+    this.setPartySlot(0, heroId, {
+      refreshRoster: fresh,
+      resetEncounter: false,
+    });
+  }
+
+  getPartyConfiguration(): PartyConfiguration {
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    return {
+      maxSlots: this.maxPartySize,
+      unlockedSlots: unlocked,
+      slots: this.selectedHeroIds.map((heroId, index) => ({
+        index,
+        heroId,
+        unlocked: index < unlocked,
+        unlockStage:
+          this.partySlotThresholds[index] ??
+          this.partySlotThresholds[this.partySlotThresholds.length - 1] ??
+          0,
+      })),
+    };
+  }
+
+  setPartySlot(
+    slotIndex: number,
+    heroId: string | null,
+    options: { refreshRoster?: boolean; resetEncounter?: boolean } = {}
+  ) {
+    this.ensurePartyArrayShape();
+    const normalizedIndex = Math.max(0, Math.min(this.maxPartySize - 1, Math.floor(slotIndex)));
+    const unlocked = this.calculateUnlockedPartySize();
+    if (normalizedIndex >= unlocked) {
+      this.log(
+        `[Runtime] Cannot assign hero to locked slot ${normalizedIndex + 1}. Unlock stage ${
+          this.partySlotThresholds[normalizedIndex] ?? "?"
+        }.`
+      );
+      return;
     }
-    this.selectedHeroIds[0] = heroId;
-    this.ensureParty(fresh);
-    this.refreshHeroLoadout();
-    this.emitState();
+
+    if (heroId && !this.heroes.some((hero) => hero.id === heroId)) {
+      this.log(`[Runtime] Hero '${heroId}' not found. Party slot unchanged.`);
+      return;
+    }
+
+    const nextId = heroId ?? null;
+    const existing = this.selectedHeroIds[normalizedIndex] ?? null;
+    if (existing === nextId) {
+      return;
+    }
+
+    if (nextId) {
+      this.selectedHeroIds = this.selectedHeroIds.map((current, index) => {
+        if (index === normalizedIndex) {
+          return current;
+        }
+        return current === nextId ? null : current ?? null;
+      });
+    }
+
+    this.selectedHeroIds[normalizedIndex] = nextId;
+    this.normalizePartyLeader();
+
+    this.applyPartySelection({
+      refreshRoster: options.refreshRoster ?? false,
+      resetEncounter: options.resetEncounter ?? false,
+    });
+  }
+
+  swapPartySlots(a: number, b: number, options: { resetEncounter?: boolean } = {}) {
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    const first = Math.max(0, Math.min(this.maxPartySize - 1, Math.floor(a)));
+    const second = Math.max(0, Math.min(this.maxPartySize - 1, Math.floor(b)));
+
+    if (first === second) {
+      return;
+    }
+    if (first >= unlocked || second >= unlocked) {
+      this.log(`[Runtime] Cannot swap locked party slots (${first + 1}, ${second + 1}).`);
+      return;
+    }
+
+    const temp = this.selectedHeroIds[first] ?? null;
+    this.selectedHeroIds[first] = this.selectedHeroIds[second] ?? null;
+    this.selectedHeroIds[second] = temp;
+
+    this.normalizePartyLeader();
+    this.applyPartySelection({
+      refreshRoster: false,
+      resetEncounter: options.resetEncounter ?? false,
+    });
+  }
+
+  setPartyOrder(order: (string | null)[], options: { resetEncounter?: boolean } = {}) {
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    const sanitized: (string | null)[] = new Array(this.maxPartySize).fill(null);
+    const unique = new Set<string>();
+
+    for (let index = 0; index < Math.min(order.length, unlocked); index += 1) {
+      const heroId = order[index];
+      if (!heroId) {
+        continue;
+      }
+      if (!this.heroes.some((hero) => hero.id === heroId)) {
+        continue;
+      }
+      if (unique.has(heroId)) {
+        continue;
+      }
+      sanitized[index] = heroId;
+      unique.add(heroId);
+    }
+
+    for (let index = 0; index < this.maxPartySize; index += 1) {
+      if (index < sanitized.length) {
+        this.selectedHeroIds[index] = sanitized[index];
+      } else {
+        this.selectedHeroIds[index] = null;
+      }
+    }
+
+    this.normalizePartyLeader();
+    this.applyPartySelection({
+      refreshRoster: false,
+      resetEncounter: options.resetEncounter ?? false,
+    });
+  }
+
+  clearPartySlot(slotIndex: number, options: { resetEncounter?: boolean } = {}) {
+    this.setPartySlot(slotIndex, null, {
+      refreshRoster: false,
+      resetEncounter: options.resetEncounter,
+    });
   }
 
   setStageIndex(index: number) {
@@ -450,7 +599,7 @@ export class SimulationRuntime {
     return this.processInventoryMutation(result);
   }
 
-  useConsumableItem(consumableId: string): ConsumableUseResult {
+  useConsumableItem(consumableId: string, options: { targetHeroId?: string } = {}): ConsumableUseResult {
     const guard = this.ensureInventoryReady();
     if (guard) {
       const messages = guard.messages ?? ["Inventory unavailable."];
@@ -461,8 +610,15 @@ export class SimulationRuntime {
       };
     }
     const result = this.playerInventory.useConsumable(consumableId);
-    if (result.success && result.effect?.kind === "heal" && this.hero) {
-      this.hero.healPercent(result.effect.percent);
+    if (result.success && result.effect?.kind === "heal") {
+      const percent = result.effect.percent;
+      const targetId = options.targetHeroId ?? null;
+      const target = targetId ? this.getPartyMemberByHeroId(targetId) : this.hero;
+      if (target) {
+        target.healPercent(percent);
+      } else if (this.party.length) {
+        this.party.forEach((member) => member.healPercent(percent));
+      }
     }
     return this.processConsumableResult(result);
   }
@@ -524,6 +680,7 @@ export class SimulationRuntime {
     this.stageWaveCompleted = 0;
     this.totalWavesCompleted = 0;
     this.currentWaveUnits = [];
+    this.enemyRoster = [];
     this.currentWaveNumber = 0;
     const blueprint = this.getStageBlueprint(this.stageIndex + 1);
     this.currentStageName = blueprint?.name ?? `Stage ${this.stageIndex + 1}`;
@@ -711,6 +868,7 @@ export class SimulationRuntime {
     this.resetPartyVitals();
     this.enemyParty = [];
     this.enemy = null;
+    this.enemyRoster = [];
 
     if (bossWave) {
       this.log(
@@ -761,6 +919,47 @@ export class SimulationRuntime {
 
     if (autoStart || this.autoStart) {
       this.startAuto();
+    }
+  }
+
+  protected applyPartySelection(options: { refreshRoster: boolean; resetEncounter: boolean }) {
+    this.ensureParty(options.refreshRoster);
+    this.refreshHeroLoadout();
+    if (options.resetEncounter) {
+      this.resetEncounterInternal(false);
+    }
+    this.emitState();
+  }
+
+  protected normalizePartyLeader() {
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    const ordered: (string | null)[] = [];
+    const seen = new Set<string>();
+    for (let index = 0; index < unlocked; index += 1) {
+      const heroId = this.selectedHeroIds[index];
+      if (!heroId) {
+        continue;
+      }
+      if (seen.has(heroId)) {
+        continue;
+      }
+      ordered.push(heroId);
+      seen.add(heroId);
+    }
+    for (let index = 0; index < unlocked; index += 1) {
+      this.selectedHeroIds[index] = ordered[index] ?? null;
+    }
+    this.selectedHeroId = this.selectedHeroIds[0] ?? null;
+  }
+
+  protected ensurePartyArrayShape() {
+    if (this.selectedHeroIds.length !== this.maxPartySize) {
+      const next: (string | null)[] = new Array(this.maxPartySize).fill(null);
+      for (let index = 0; index < Math.min(this.selectedHeroIds.length, this.maxPartySize); index += 1) {
+        next[index] = this.selectedHeroIds[index] ?? null;
+      }
+      this.selectedHeroIds = next;
     }
   }
 
@@ -817,6 +1016,41 @@ export class SimulationRuntime {
     return Math.min(this.maxPartySize, Math.max(1, unlocked));
   }
 
+  protected getHeroReferenceLevel(): number {
+    if (this.hero) {
+      return this.hero.level;
+    }
+    if (this.party.length) {
+      return this.party[0].level;
+    }
+    const selectedId =
+      this.selectedHeroId ?? this.selectedHeroIds.find((id): id is string => Boolean(id)) ?? null;
+    if (selectedId) {
+      const definition = this.heroes.find((hero) => hero.id === selectedId);
+      const level = definition?.data?.progression?.initialLevel;
+      if (typeof level === "number" && level > 0) {
+        return level;
+      }
+    }
+    const fallback = this.heroes[0]?.data?.progression?.initialLevel;
+    return typeof fallback === "number" && fallback > 0 ? fallback : 1;
+  }
+
+  protected getHeroLevelBand(level: number): number {
+    if (level >= 15) {
+      return 2;
+    }
+    if (level >= 10) {
+      return 1;
+    }
+    return 0;
+  }
+
+  protected getStageCacheKey(stageNumber: number, heroLevel?: number): string {
+    const band = this.getHeroLevelBand(heroLevel ?? this.getHeroReferenceLevel());
+    return `${stageNumber}|${band}`;
+  }
+
   protected updatePartyUnlocks() {
     if (!this.selectedHeroIds.length) {
       this.selectedHeroIds = new Array(this.maxPartySize).fill(null);
@@ -863,6 +1097,20 @@ export class SimulationRuntime {
       return "Hero";
     }
     return "Ally";
+  }
+
+  protected getPartyMemberByHeroId(heroId: string | null | undefined): Character | null {
+    if (!heroId) {
+      return null;
+    }
+    const index = this.selectedHeroIds.findIndex((id) => id === heroId);
+    if (index >= 0 && index < this.party.length) {
+      const member = this.party[index];
+      if (member) {
+        return member;
+      }
+    }
+    return this.partyRoster.get(heroId) ?? null;
   }
 
   protected getPartySummary(): PartySummary {
@@ -999,6 +1247,7 @@ export class SimulationRuntime {
       tier: enemy.tier,
       data: this.cloneData(enemy.data),
     }));
+    this.enemyRoster = this.currentWaveUnits.map((unit) => ({ id: unit.id, label: unit.label }));
 
     if (!this.currentWaveUnits.length) {
       return false;
@@ -1025,6 +1274,7 @@ export class SimulationRuntime {
     this.currentWaveUnits = [];
     this.enemyParty = [];
     this.enemy = null;
+    this.enemyRoster = [];
     this.currentEnemyLabel = "";
     this.currentWaveIsBoss = false;
   }
@@ -1092,11 +1342,13 @@ export class SimulationRuntime {
     if (!this.stageGenerator) {
       return null;
     }
-    if (!this.stageCache.has(stageNumber)) {
-      const blueprint = this.stageGenerator.generateStage(stageNumber, this.enemyPools);
-      this.stageCache.set(stageNumber, blueprint);
+    const heroLevel = this.getHeroReferenceLevel();
+    const cacheKey = this.getStageCacheKey(stageNumber, heroLevel);
+    if (!this.stageCache.has(cacheKey)) {
+      const blueprint = this.stageGenerator.generateStage(stageNumber, this.enemyPools, { heroLevel });
+      this.stageCache.set(cacheKey, blueprint);
     }
-    return this.stageCache.get(stageNumber) ?? null;
+    return this.stageCache.get(cacheKey) ?? null;
   }
 
   protected handleBossTimeout() {

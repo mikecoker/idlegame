@@ -1,8 +1,9 @@
 import type { FC } from "react";
-import type { StatusPayload } from "../simulatorHarness";
+import type { StatusPayload, VitalSnapshot } from "../simulatorHarness";
 
 interface StatusPanelProps {
   status: StatusPayload | null;
+  onUsePotion?: (heroId: string) => void;
 }
 
 const STATUS_METRICS: Array<{
@@ -20,7 +21,7 @@ const STATUS_METRICS: Array<{
     formatter: (value) => `${Number(value ?? 0).toFixed(1)}s`,
   },
   { key: "swings", label: "Swings" },
-  { key: "heroDamage", label: "Hero Dmg" },
+  { key: "heroDamage", label: "Ally Dmg" },
   { key: "enemyDamage", label: "Enemy Dmg" },
   { key: "winner", label: "Winner" },
   {
@@ -40,36 +41,21 @@ const STATUS_METRICS: Array<{
   },
 ];
 
-const StatusPanel: FC<StatusPanelProps> = ({ status }) => {
-  const heroHealth = status?.heroHealth ?? 0;
-  const heroMax = status?.heroMaxHealth ?? 0;
-  const enemyHealth = status?.enemyHealth ?? 0;
-  const enemyMax = status?.enemyMaxHealth ?? 0;
-  const enemyLabel = status?.opponent && status.opponent !== "-" ? status.opponent : "Enemy";
+const StatusPanel: FC<StatusPanelProps> = ({ status, onUsePotion }) => {
+  const partyVitals = status?.partyVitals ?? [];
+  const enemyVitals = status?.enemyVitals ?? [];
 
   return (
     <section className="status-bar">
       <div className="status-health-container">
-        <HealthBar
-          label="Hero HP"
-          current={heroHealth}
-          max={heroMax}
-          variant="hero"
-        />
-        <HealthBar
-          label={`${enemyLabel} HP`}
-          current={enemyHealth}
-          max={enemyMax}
-          variant="enemy"
-        />
+        <VitalsGroup title="Allies" vitals={partyVitals} variant="hero" onUsePotion={onUsePotion} />
+        <VitalsGroup title="Enemies" vitals={enemyVitals} variant="enemy" />
       </div>
       <div className="status-chip-row">
         {STATUS_METRICS.map(({ key, label, formatter }) => (
           <div key={key} className="status-chip">
             <span className="status-label">{label}</span>
-            <span className="status-value">
-              {formatMetric(status, key, formatter)}
-            </span>
+            <span className="status-value">{formatMetric(status, key, formatter)}</span>
           </div>
         ))}
       </div>
@@ -77,19 +63,67 @@ const StatusPanel: FC<StatusPanelProps> = ({ status }) => {
   );
 };
 
+interface VitalsGroupProps {
+  title: string;
+  vitals: VitalSnapshot[];
+  variant: "hero" | "enemy";
+  onUsePotion?: (heroId: string) => void;
+}
+
+const VitalsGroup: FC<VitalsGroupProps> = ({ title, vitals, variant, onUsePotion }) => (
+  <div className="status-vital-card">
+    <header className="status-vital-header">{title}</header>
+    {vitals.length ? (
+      vitals.map((entry) => (
+        <div key={entry.id} className="status-vital-entry">
+          <HealthBar
+            label={entry.label}
+            current={entry.current}
+            max={entry.max}
+            variant={variant}
+            alive={entry.alive}
+            isBoss={entry.isBoss}
+          />
+          {variant === "hero" ? (
+            <>
+              <XPBar level={entry.level} percent={entry.xpPercent} />
+              <div className="status-action-row">
+                <button
+                  type="button"
+                  onClick={() => onUsePotion?.(entry.id)}
+                  disabled={!entry.canUsePotion}
+                >
+                  Use Potion
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ))
+    ) : (
+      <div className="status-vital-empty">No combatants</div>
+    )}
+  </div>
+);
+
 interface HealthBarProps {
   label: string;
   current: number;
   max: number;
   variant: "hero" | "enemy";
+  alive?: boolean;
+  isBoss?: boolean;
 }
 
-const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant }) => {
+const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant, alive = true, isBoss = false }) => {
   const clampedMax = max > 0 ? max : 0;
-  const ratio = clampedMax > 0 ? Math.min(1, Math.max(0, current / clampedMax)) : 0;
+  const safeCurrent = Math.max(0, current);
+  const ratio = clampedMax > 0 ? Math.min(1, Math.max(0, safeCurrent / clampedMax)) : 0;
   const percentage = Math.round(ratio * 100);
-  const currentDisplay = Math.round(current);
-  const maxDisplay = Math.round(clampedMax);
+  const currentDisplay = Math.round(safeCurrent).toLocaleString();
+  const maxDisplay = Math.round(clampedMax).toLocaleString();
+  const defeated = !alive || safeCurrent <= 0;
+  const trackClass = `status-health-track status-health-${variant}${isBoss ? " status-health-boss" : ""}`;
 
   return (
     <div
@@ -97,16 +131,40 @@ const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant }) => {
       role="meter"
       aria-valuemin={0}
       aria-valuemax={clampedMax}
-      aria-valuenow={Math.max(0, current)}
+      aria-valuenow={safeCurrent}
     >
       <div className="status-health-header">
-        <span className="status-label">{label}</span>
-        <span className="status-value">
-          {`${currentDisplay.toLocaleString()} / ${maxDisplay.toLocaleString()} (${percentage}%)`}
+        <span className="status-label">
+          {label}
+          {isBoss ? " (Boss)" : ""}
+        </span>
+        <span className={`status-value${defeated ? " status-value-defeated" : ""}`}>
+          {defeated ? "Defeated" : `${currentDisplay} / ${maxDisplay} (${percentage}%)`}
         </span>
       </div>
-      <div className={`status-health-track status-health-${variant}`}>
-        <div className="status-health-fill" style={{ width: `${percentage}%` }} />
+      <div className={trackClass}>
+        <div className="status-health-fill" style={{ width: `${defeated ? 0 : percentage}%` }} />
+      </div>
+    </div>
+  );
+};
+
+interface XPBarProps {
+  level?: number;
+  percent?: number;
+}
+
+const XPBar: FC<XPBarProps> = ({ level, percent }) => {
+  const clamped = percent ? Math.min(1, Math.max(0, percent)) : 0;
+  const percentage = Math.round(clamped * 100);
+  return (
+    <div className="status-xp-bar">
+      <div className="status-xp-header">
+        <span className="status-label">Level {level ?? "-"}</span>
+        <span className="status-value">{percentage}%</span>
+      </div>
+      <div className="status-xp-track">
+        <div className="status-xp-fill" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   );
@@ -120,10 +178,13 @@ function formatMetric(
   if (!status) {
     return key === "label" ? "Idle" : "-";
   }
-  const raw =
-    key === "label"
-      ? status.label
-      : (status[key] as number | string | boolean | null);
+  if (key === "label") {
+    return status.label;
+  }
+  const raw = status[key] as number | string | boolean | null | VitalSnapshot[];
+  if (Array.isArray(raw)) {
+    return raw.length ? String(raw.length) : "-";
+  }
   if (formatter) {
     return formatter(raw);
   }

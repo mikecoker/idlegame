@@ -18,6 +18,7 @@ import {
 import ControlBar from "./components/ControlBar";
 import CraftingPanel from "./components/CraftingPanel";
 import HistoryPanel from "./components/HistoryPanel";
+import PartyPanel from "./components/PartyPanel";
 import InventoryPanel from "./components/InventoryPanel";
 import LogPanel from "./components/LogPanel";
 import Paperdoll from "./components/Paperdoll";
@@ -228,6 +229,25 @@ const App = () => {
     harnessRef.current?.unequipSlot(slot);
   }, []);
 
+  const handlePartyAssign = useCallback((slotIndex: number, heroId: string | null) => {
+    harnessRef.current?.assignPartySlot(slotIndex, heroId);
+  }, []);
+
+  const handlePartySwap = useCallback((sourceIndex: number, targetIndex: number) => {
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+    harnessRef.current?.swapPartySlots(sourceIndex, targetIndex);
+  }, []);
+
+  const handlePartyClear = useCallback((slotIndex: number) => {
+    harnessRef.current?.clearPartySlot(slotIndex);
+  }, []);
+
+  const handleUsePotion = useCallback((heroId: string) => {
+    harnessRef.current?.useHealthPotionOnHero(heroId);
+  }, []);
+
   const getEquipPreview = useCallback(
     (instanceId: string): StatPreviewRow[] | null =>
       harnessRef.current?.getEquipPreview(instanceId) ?? null,
@@ -310,11 +330,22 @@ const App = () => {
         onAutoResumeToggle={handleAutoResumeToggle}
       />
 
-      <StatusPanel status={status} />
+      <StatusPanel status={status} onUsePotion={handleUsePotion} />
       <TabStrip active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "hero" ? (
         <main className="content-grid">
+          <section className="panel party-panel">
+            <h2>Party Composition</h2>
+            <PartyPanel
+              slots={controls?.partySlots ?? []}
+              heroOptions={controls?.heroOptions ?? []}
+              unlockedSlots={controls?.unlockedPartySlots ?? 0}
+              onAssign={handlePartyAssign}
+              onClear={handlePartyClear}
+              onSwap={handlePartySwap}
+            />
+          </section>
           <section className="panel paperdoll-panel">
             <h2>Hero Loadout</h2>
             <Paperdoll

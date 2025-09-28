@@ -54,23 +54,24 @@ interface EnemyPools {
 export class StageGenerator {
   constructor(private readonly config: ProgressionConfig) {}
 
-  generateStage(stageNumber: number, enemyPools: EnemyPools): StageBlueprint {
+  generateStage(stageNumber: number, enemyPools: EnemyPools, context?: { heroLevel?: number }): StageBlueprint {
     const name = `Stage ${stageNumber}`;
     const lootTableId = this.resolveLootTable(stageNumber);
     const waves: GeneratedWave[] = [];
 
     const totalWaves = Math.max(1, Math.round(this.config.wavesPerStage));
+    const heroLevel = context?.heroLevel ?? 1;
     const normalWaves = Math.max(0, totalWaves - 1);
 
     for (let waveIndex = 0; waveIndex < normalWaves; waveIndex += 1) {
       waves.push({
-        enemies: this.generateWaveEnemies(stageNumber, waveIndex, enemyPools, false),
+        enemies: this.generateWaveEnemies(stageNumber, waveIndex, enemyPools, false, heroLevel),
         isBoss: false,
       });
     }
 
     waves.push({
-      enemies: this.generateWaveEnemies(stageNumber, normalWaves, enemyPools, true),
+      enemies: this.generateWaveEnemies(stageNumber, normalWaves, enemyPools, true, heroLevel),
       isBoss: true,
     });
 
@@ -91,7 +92,8 @@ export class StageGenerator {
     stageNumber: number,
     waveIndex: number,
     enemyPools: EnemyPools,
-    isBoss: boolean
+    isBoss: boolean,
+    heroLevel: number
   ): EnemyUnit[] {
     if (isBoss) {
       const boss = this.pickEnemy("boss", enemyPools, stageNumber + waveIndex) ??
@@ -103,7 +105,7 @@ export class StageGenerator {
       return [this.scaleEnemy(boss, stageNumber, true)];
     }
 
-    const count = this.getEnemiesPerWave(stageNumber);
+    const count = this.getEnemiesPerWave(stageNumber, heroLevel);
     const enemies: EnemyUnit[] = [];
 
     const mediumAllowance = Math.min(count, Math.max(0, Math.floor(stageNumber / 10)));
@@ -141,14 +143,22 @@ export class StageGenerator {
     return enemies;
   }
 
-  protected getEnemiesPerWave(stageNumber: number): number {
+  protected getEnemiesPerWave(stageNumber: number, heroLevel: number): number {
     const config = this.config.enemiesPerWave;
     const base = Math.max(1, Math.floor(config.base));
     const additional = Math.max(
       0,
       Math.floor((stageNumber - 1) / 5) * Math.max(0, Math.floor(config.perFiveStages))
     );
-    return base + additional;
+    const stageCount = base + additional;
+
+    if (heroLevel < 10) {
+      return 1;
+    }
+    if (heroLevel < 15) {
+      return Math.min(stageCount, 2);
+    }
+    return Math.max(stageCount, 3);
   }
 
   protected pickEnemy(tier: string, pools: EnemyPools, seed: number): EnemyUnit | null {
