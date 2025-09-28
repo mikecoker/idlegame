@@ -244,6 +244,10 @@ const App = () => {
     harnessRef.current?.clearPartySlot(slotIndex);
   }, []);
 
+  const handlePartyPromote = useCallback((slotIndex: number) => {
+    harnessRef.current?.promotePartySlot(slotIndex);
+  }, []);
+
   const handleUsePotion = useCallback((heroId: string) => {
     harnessRef.current?.useHealthPotionOnHero(heroId);
   }, []);
@@ -344,6 +348,7 @@ const App = () => {
               onAssign={handlePartyAssign}
               onClear={handlePartyClear}
               onSwap={handlePartySwap}
+              onPromote={handlePartyPromote}
             />
           </section>
           <section className="panel paperdoll-panel">

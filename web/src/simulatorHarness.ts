@@ -135,6 +135,8 @@ export interface VitalSnapshot {
   potionId?: string | null;
   canUsePotion?: boolean;
   isBoss?: boolean;
+  slotIndex?: number;
+  isPrimary?: boolean;
 }
 
 export interface StatusPayload {
@@ -265,6 +267,7 @@ export interface PartySlotControl {
   heroLabel: string | null;
   unlocked: boolean;
   unlockStage: number;
+  isPrimary: boolean;
 }
 
 export interface ControlStatePayload {
@@ -280,6 +283,8 @@ export interface ControlStatePayload {
   partySlots: PartySlotControl[];
   unlockedPartySlots: number;
   maxPartySlots: number;
+  primaryHeroId: string | null;
+  primarySlotIndex: number;
 }
 
 export interface TelemetryRow {
@@ -354,7 +359,9 @@ export class SimulatorHarness {
   protected enemy: Character | null = null;
   protected party: Character[] = [];
   protected enemyParty: Character[] = [];
-  protected partyIds: (string | null)[] = [];
+  protected partyIds: string[] = [];
+  protected partySlotOrder: number[] = [];
+  protected primarySlotIndex = 0;
   protected partySummary: PartySummary | null = null;
   protected lastSummary: EncounterSummary | null = null;
   protected partyConfig: PartyConfiguration | null = null;
@@ -498,12 +505,16 @@ export class SimulatorHarness {
           heroLabel: slot.heroId ? this.resolveHeroLabel(slot.heroId) : null,
           unlocked: slot.unlocked,
           unlockStage: slot.unlockStage,
+          isPrimary: slot.isPrimary,
         }))
       : [];
 
+    const primaryHeroId = config?.primaryHeroId ?? this.selectedHeroId ?? null;
+    const primarySlotIndex = config?.primaryIndex ?? this.primarySlotIndex ?? 0;
+
     const selectedHero =
-      this.selectedHeroId ??
-      (partySlots.find((slot) => slot.index === 0 && slot.heroId)?.heroId ?? heroOptions[0]?.id ?? null);
+      primaryHeroId ??
+      (partySlots.find((slot) => slot.isPrimary && slot.heroId)?.heroId ?? heroOptions[0]?.id ?? null);
 
     const payload: ControlStatePayload = {
       heroOptions,
@@ -518,6 +529,8 @@ export class SimulatorHarness {
       partySlots,
       unlockedPartySlots: config?.unlockedSlots ?? 0,
       maxPartySlots: config?.maxSlots ?? 0,
+      primaryHeroId,
+      primarySlotIndex,
     };
 
     this.listeners.onControls(payload);
@@ -828,10 +841,12 @@ export class SimulatorHarness {
     const previousStage = previousState?.stageIndex ?? -1;
 
     this.runtimeState = state;
-    this.selectedHeroId = state.heroId;
+    this.selectedHeroId = state.primaryHeroId ?? state.heroId;
 
     this.party = state.party ?? [];
     this.partyIds = state.partyIds ?? [];
+    this.partySlotOrder = state.partySlotOrder ?? [];
+    this.primarySlotIndex = state.primarySlotIndex ?? 0;
     this.enemyParty = state.enemyParty ?? [];
     this.partySummary = state.partySummary ?? null;
     this.enemyRoster = state.enemyRoster ?? [];
@@ -869,7 +884,7 @@ export class SimulatorHarness {
 
     if (this.pendingPartyProgress.size && this.party.length) {
       this.party.forEach((member, index) => {
-        const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null);
+        const heroId = this.partyIds[index] ?? null;
         if (heroId && this.pendingPartyProgress.has(heroId)) {
           member.restoreProgress(this.pendingPartyProgress.get(heroId)!);
           this.pendingPartyProgress.delete(heroId);
@@ -1857,15 +1872,16 @@ export class SimulatorHarness {
     const potionAvailable = potionId ? (this.consumables[potionId] ?? 0) : 0;
     const partyVitals: VitalSnapshot[] = this.party.length
       ? this.party.map((member, index) => {
-          const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null) ?? `ally-${index}`;
+          const heroId = this.partyIds[index] ?? `ally-${index}`;
           const label = this.getPartyMemberLabel(index);
           const current = Math.max(0, member.health);
           const max = Math.max(0, member.maxHealth);
           const alive = member.isAlive;
           const xpPercent = member.experienceProgress ?? 0;
           const canUsePotion = Boolean(potionId && potionAvailable > 0 && alive && current < max);
+          const slotIndex = this.partySlotOrder[index] ?? index;
           return {
-            id: heroId ?? `ally-${index}`,
+            id: heroId,
             label,
             current,
             max,
@@ -1874,6 +1890,8 @@ export class SimulatorHarness {
             xpPercent,
             potionId: potionId ?? null,
             canUsePotion,
+            slotIndex,
+            isPrimary: index === 0,
           };
         })
       : this.hero
@@ -1892,6 +1910,8 @@ export class SimulatorHarness {
             canUsePotion: Boolean(
               potionId && potionAvailable > 0 && this.hero.isAlive && this.hero.health < this.hero.maxHealth
             ),
+            slotIndex: this.primarySlotIndex,
+            isPrimary: true,
           },
         ]
       : [];
@@ -2012,8 +2032,8 @@ export class SimulatorHarness {
     }
 
     this.party.forEach((member, index) => {
-      const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId ?? "Leader" : `Hero ${index + 1}`);
-      const label = this.heroOptions.find((preset) => preset.id === heroId)?.label ?? heroId ?? `Hero ${index + 1}`;
+      const heroId = this.partyIds[index] ?? `hero-${index + 1}`;
+      const label = this.heroOptions.find((preset) => preset.id === heroId)?.label ?? heroId;
       rows.push({ label: `${label} Level`, value: member.level.toString(), raw: member.level });
       rows.push({
         label: `${label} HP`,
@@ -2089,14 +2109,14 @@ export class SimulatorHarness {
 
   protected getPartyMemberLabel(index: number): string {
     if (index < 0 || index >= this.party.length) {
-      return "Hero";
+      return "Ally";
     }
-    const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null);
+    const heroId = this.partyIds[index];
     if (heroId) {
       const preset = this.heroOptions.find((option) => option.id === heroId);
       return preset?.label ?? heroId;
     }
-    return `Hero ${index + 1}`;
+    return `Ally ${index + 1}`;
   }
 
   protected getPreferredHealingConsumable(): string | null {
@@ -2195,7 +2215,7 @@ export class SimulatorHarness {
       const partyProgress: Record<string, CharacterProgressSnapshot> = {};
       if (this.party.length) {
         this.party.forEach((member, index) => {
-          const assignedId = this.partyIds[index] ?? (index === 0 ? heroId : null);
+          const assignedId = this.partyIds[index] ?? null;
           if (assignedId) {
             partyProgress[assignedId] = member.serializeProgress();
           }
@@ -2488,14 +2508,32 @@ export class SimulatorHarness {
       resetEncounter: false,
     });
     this.refreshPartyConfiguration();
-    this.selectedHeroId =
-      this.partyConfig?.slots.find((entry) => entry.index === 0)?.heroId ?? this.selectedHeroId;
+    this.selectedHeroId = this.partyConfig?.primaryHeroId ?? this.selectedHeroId;
+    this.primarySlotIndex = this.partyConfig?.primaryIndex ?? this.primarySlotIndex;
     if (options.restart === false) {
       this.notifyControlState();
       this.persistState();
       return;
     }
     this.resetEncounter(fresh);
+  }
+
+  promotePartySlot(slotIndex: number) {
+    if (!this.runtime) {
+      return;
+    }
+    const config = this.partyConfig ?? this.refreshPartyConfiguration();
+    const slot = config?.slots[slotIndex];
+    if (!slot?.unlocked || !slot.heroId) {
+      console.warn(`[Harness] Cannot promote slot ${slotIndex + 1}.`);
+      return;
+    }
+    this.runtime.setPrimarySlot(slotIndex, { resetEncounter: false });
+    this.refreshPartyConfiguration();
+    this.selectedHeroId = this.partyConfig?.primaryHeroId ?? slot.heroId;
+    this.primarySlotIndex = this.partyConfig?.primaryIndex ?? slotIndex;
+    this.notifyControlState();
+    this.persistState();
   }
 
   clearPartySlot(slotIndex: number, options: { restart?: boolean } = {}) {
@@ -2537,8 +2575,8 @@ export class SimulatorHarness {
     }
     this.runtime.swapPartySlots(sourceIndex, targetIndex, { resetEncounter: false });
     this.refreshPartyConfiguration();
-    this.selectedHeroId =
-      this.partyConfig?.slots.find((entry) => entry.index === 0)?.heroId ?? this.selectedHeroId;
+    this.selectedHeroId = this.partyConfig?.primaryHeroId ?? this.selectedHeroId;
+    this.primarySlotIndex = this.partyConfig?.primaryIndex ?? this.primarySlotIndex;
     if (options.restart === false) {
       this.notifyControlState();
       this.persistState();
@@ -2553,7 +2591,7 @@ export class SimulatorHarness {
       return;
     }
     this.selectedHeroId = heroId;
-    this.assignPartySlot(0, heroId, { fresh: true });
+    this.runtime?.setHero(heroId, true);
   }
 
   selectStage(index: number) {

@@ -83,6 +83,8 @@ const VitalsGroup: FC<VitalsGroupProps> = ({ title, vitals, variant, onUsePotion
             variant={variant}
             alive={entry.alive}
             isBoss={entry.isBoss}
+            slotIndex={entry.slotIndex}
+            isPrimary={entry.isPrimary}
           />
           {variant === "hero" ? (
             <>
@@ -113,9 +115,20 @@ interface HealthBarProps {
   variant: "hero" | "enemy";
   alive?: boolean;
   isBoss?: boolean;
+  slotIndex?: number;
+  isPrimary?: boolean;
 }
 
-const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant, alive = true, isBoss = false }) => {
+const HealthBar: FC<HealthBarProps> = ({
+  label,
+  current,
+  max,
+  variant,
+  alive = true,
+  isBoss = false,
+  slotIndex,
+  isPrimary,
+}) => {
   const clampedMax = max > 0 ? max : 0;
   const safeCurrent = Math.max(0, current);
   const ratio = clampedMax > 0 ? Math.min(1, Math.max(0, safeCurrent / clampedMax)) : 0;
@@ -124,6 +137,14 @@ const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant, alive = t
   const maxDisplay = Math.round(clampedMax).toLocaleString();
   const defeated = !alive || safeCurrent <= 0;
   const trackClass = `status-health-track status-health-${variant}${isBoss ? " status-health-boss" : ""}`;
+  const tags: string[] = [];
+  if (typeof slotIndex === "number" && Number.isFinite(slotIndex)) {
+    tags.push(`Slot ${slotIndex + 1}`);
+  }
+  if (isPrimary && variant === "hero") {
+    tags.push("Leader");
+  }
+  const suffix = tags.length ? ` (${tags.join(" • ")})` : "";
 
   return (
     <div
@@ -136,6 +157,7 @@ const HealthBar: FC<HealthBarProps> = ({ label, current, max, variant, alive = t
       <div className="status-health-header">
         <span className="status-label">
           {label}
+          {suffix}
           {isBoss ? " (Boss)" : ""}
         </span>
         <span className={`status-value${defeated ? " status-value-defeated" : ""}`}>

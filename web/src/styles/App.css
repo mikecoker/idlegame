@@ -612,6 +612,11 @@ body {
   gap: 8px;
 }
 
+.party-slot.primary {
+  border-color: rgba(255, 196, 99, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 196, 99, 0.2);
+}
+
 .party-slot.locked {
   opacity: 0.6;
 }
@@ -624,9 +629,26 @@ body {
   color: rgba(192, 220, 255, 0.92);
 }
 
+.party-slot-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .party-slot-label {
   font-size: 0.85rem;
   color: rgba(154, 189, 255, 0.85);
+}
+
+.party-slot-badge {
+  background: rgba(255, 196, 99, 0.9);
+  color: rgba(30, 30, 32, 0.95);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
 }
 
 .party-slot-body {
@@ -653,11 +675,12 @@ body {
 
 .party-slot-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .party-slot-actions button {
-  flex: 1;
+  flex: 1 1 45%;
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid rgba(120, 167, 255, 0.25);

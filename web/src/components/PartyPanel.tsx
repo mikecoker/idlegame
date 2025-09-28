@@ -8,6 +8,7 @@ interface PartyPanelProps {
   onAssign(slotIndex: number, heroId: string | null): void;
   onClear(slotIndex: number): void;
   onSwap(sourceIndex: number, targetIndex: number): void;
+  onPromote(slotIndex: number): void;
 }
 
 const PartyPanel: FC<PartyPanelProps> = ({
@@ -17,6 +18,7 @@ const PartyPanel: FC<PartyPanelProps> = ({
   onAssign,
   onClear,
   onSwap,
+  onPromote,
 }) => {
   if (!slots.length) {
     return <div className="party-empty">Party layout will appear once the simulator is ready.</div>;
@@ -36,21 +38,32 @@ const PartyPanel: FC<PartyPanelProps> = ({
         const prevIndex = slot.index - 1;
         const nextIndex = slot.index + 1;
         const otherAssignments = new Set(
-          slots
-            .filter((entry) => entry.index !== slot.index && entry.heroId)
-            .map((entry) => entry.heroId as string)
-        );
+      slots
+        .filter((entry) => entry.index !== slot.index && entry.heroId)
+        .map((entry) => entry.heroId as string)
+    );
 
-        return (
-          <div key={slot.index} className={`party-slot${isLocked ? " locked" : ""}`}>
-            <div className="party-slot-header">
-              <span>Slot {slot.index + 1}</span>
-              {slot.heroLabel ? <span className="party-slot-label">{slot.heroLabel}</span> : null}
-            </div>
+    const slotClass = ["party-slot"];
+    if (isLocked) {
+      slotClass.push("locked");
+    }
+    if (slot.isPrimary) {
+      slotClass.push("primary");
+    }
 
-            {isLocked ? (
-              <div className="party-slot-lock-info">Unlocks at stage {slot.unlockStage}</div>
-            ) : (
+    return (
+      <div key={slot.index} className={slotClass.join(" ")}>
+        <div className="party-slot-header">
+          <span>Slot {slot.index + 1}</span>
+          <div className="party-slot-header-right">
+            {slot.heroLabel ? <span className="party-slot-label">{slot.heroLabel}</span> : null}
+            {slot.isPrimary ? <span className="party-slot-badge">Leader</span> : null}
+          </div>
+        </div>
+
+        {isLocked ? (
+          <div className="party-slot-lock-info">Unlocks at stage {slot.unlockStage}</div>
+        ) : (
               <div className="party-slot-body">
                 <label className="party-slot-select">
                   Hero
@@ -85,6 +98,13 @@ const PartyPanel: FC<PartyPanelProps> = ({
                     disabled={nextIndex > lastUnlockedIndex || !slots[nextIndex]?.unlocked}
                   >
                     Move Down
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPromote(slot.index)}
+                    disabled={slot.isPrimary || !slot.heroId}
+                  >
+                    Set Leader
                   </button>
                   <button
                     type="button"

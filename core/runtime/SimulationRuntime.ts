@@ -62,11 +62,14 @@ export interface PartySlotState {
   heroId: string | null;
   unlocked: boolean;
   unlockStage: number;
+  isPrimary: boolean;
 }
 
 export interface PartyConfiguration {
   maxSlots: number;
   unlockedSlots: number;
+  primaryIndex: number;
+  primaryHeroId: string | null;
   slots: PartySlotState[];
 }
 
@@ -77,6 +80,8 @@ export interface EnemyRosterEntry {
 
 export interface SimulationState {
   heroId: string | null;
+  primaryHeroId: string | null;
+  primarySlotIndex: number;
   stageIndex: number;
   stageName: string;
   waveNumber: number;
@@ -92,7 +97,8 @@ export interface SimulationState {
   bossEnraged: boolean;
   party: Character[];
   enemyParty: Character[];
-  partyIds: (string | null)[];
+  partyIds: string[];
+  partySlotOrder: number[];
   partySummary: PartySummary;
   enemyRoster: EnemyRosterEntry[];
 }
@@ -125,6 +131,9 @@ export class SimulationRuntime {
   protected enemyParty: Character[] = [];
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
+  protected primarySlotIndex = 0;
+  protected activePartySlots: number[] = [];
+  protected activePartyIds: string[] = [];
 
   protected stageIndex = 0;
   protected stageWaveCompleted = 0;
@@ -181,6 +190,7 @@ export class SimulationRuntime {
     }
 
     this.updatePartyUnlocks();
+    this.normalizePrimarySelection(this.calculateUnlockedPartySize());
 
     const lootTables = await this.dataSource.loadLootTables();
     this.lootTables.clear();
@@ -241,6 +251,8 @@ export class SimulationRuntime {
   getState(): SimulationState {
     return {
       heroId: this.selectedHeroId,
+      primaryHeroId: this.selectedHeroId,
+      primarySlotIndex: this.primarySlotIndex,
       stageIndex: this.stageIndex,
       stageName: this.currentStageName,
       waveNumber: this.currentWaveNumber,
@@ -256,7 +268,8 @@ export class SimulationRuntime {
       bossEnraged: this.currentWaveIsBoss ? this.bossEnraged : false,
       party: this.party,
       enemyParty: this.enemyParty,
-      partyIds: this.selectedHeroIds.slice(0, this.party.length),
+      partyIds: this.activePartyIds.slice(),
+      partySlotOrder: this.activePartySlots.slice(),
       partySummary: this.getPartySummary(),
       enemyRoster: this.enemyRoster.map((entry) => ({ ...entry })),
     };
@@ -307,10 +320,31 @@ export class SimulationRuntime {
   }
 
   setHero(heroId: string, fresh = true) {
-    this.setPartySlot(0, heroId, {
-      refreshRoster: fresh,
-      resetEncounter: false,
-    });
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    let slotIndex = this.selectedHeroIds.findIndex(
+      (id, idx) => idx < unlocked && id === heroId
+    );
+
+    if (slotIndex < 0) {
+      const preferredSlot = this.primarySlotIndex < unlocked ? this.primarySlotIndex : 0;
+      this.setPartySlot(preferredSlot, heroId, {
+        refreshRoster: fresh,
+        resetEncounter: false,
+      });
+      slotIndex = this.selectedHeroIds.findIndex(
+        (id, idx) => idx < unlocked && id === heroId
+      );
+    } else if (fresh) {
+      this.setPartySlot(slotIndex, heroId, {
+        refreshRoster: true,
+        resetEncounter: false,
+      });
+    }
+
+    if (slotIndex >= 0) {
+      this.setPrimarySlot(slotIndex, { refreshRoster: false, resetEncounter: false });
+    }
   }
 
   getPartyConfiguration(): PartyConfiguration {
@@ -319,6 +353,8 @@ export class SimulationRuntime {
     return {
       maxSlots: this.maxPartySize,
       unlockedSlots: unlocked,
+      primaryIndex: Math.min(this.primarySlotIndex, unlocked - 1),
+      primaryHeroId: this.selectedHeroId,
       slots: this.selectedHeroIds.map((heroId, index) => ({
         index,
         heroId,
@@ -327,6 +363,11 @@ export class SimulationRuntime {
           this.partySlotThresholds[index] ??
           this.partySlotThresholds[this.partySlotThresholds.length - 1] ??
           0,
+        isPrimary:
+          index === this.primarySlotIndex &&
+          index < unlocked &&
+          Boolean(heroId) &&
+          heroId === this.selectedHeroId,
       })),
     };
   }
@@ -360,16 +401,19 @@ export class SimulationRuntime {
     }
 
     if (nextId) {
-      this.selectedHeroIds = this.selectedHeroIds.map((current, index) => {
-        if (index === normalizedIndex) {
-          return current;
+      for (let index = 0; index < this.selectedHeroIds.length; index += 1) {
+        if (index !== normalizedIndex && this.selectedHeroIds[index] === nextId) {
+          this.selectedHeroIds[index] = null;
         }
-        return current === nextId ? null : current ?? null;
-      });
+      }
     }
 
     this.selectedHeroIds[normalizedIndex] = nextId;
-    this.normalizePartyLeader();
+    if (nextId && (!this.selectedHeroId || this.primarySlotIndex === normalizedIndex)) {
+      this.selectedHeroId = nextId;
+      this.primarySlotIndex = normalizedIndex;
+    }
+    this.normalizePrimarySelection(unlocked);
 
     this.applyPartySelection({
       refreshRoster: options.refreshRoster ?? false,
@@ -391,13 +435,49 @@ export class SimulationRuntime {
       return;
     }
 
-    const temp = this.selectedHeroIds[first] ?? null;
-    this.selectedHeroIds[first] = this.selectedHeroIds[second] ?? null;
-    this.selectedHeroIds[second] = temp;
+    const firstId = this.selectedHeroIds[first] ?? null;
+    const secondId = this.selectedHeroIds[second] ?? null;
+    this.selectedHeroIds[first] = secondId;
+    this.selectedHeroIds[second] = firstId;
 
-    this.normalizePartyLeader();
+    if (this.primarySlotIndex === first) {
+      this.primarySlotIndex = second;
+    } else if (this.primarySlotIndex === second) {
+      this.primarySlotIndex = first;
+    }
+
+    this.normalizePrimarySelection(unlocked);
     this.applyPartySelection({
       refreshRoster: false,
+      resetEncounter: options.resetEncounter ?? false,
+    });
+  }
+
+  setPrimarySlot(slotIndex: number, options: { refreshRoster?: boolean; resetEncounter?: boolean } = {}) {
+    this.ensurePartyArrayShape();
+    const unlocked = this.calculateUnlockedPartySize();
+    const normalized = Math.max(0, Math.min(this.maxPartySize - 1, Math.floor(slotIndex)));
+
+    if (normalized >= unlocked) {
+      this.log(
+        `[Runtime] Cannot promote locked slot ${normalized + 1}. Unlock stage ${
+          this.partySlotThresholds[normalized] ?? '?'
+        }.`
+      );
+      return;
+    }
+
+    const heroId = this.selectedHeroIds[normalized];
+    if (!heroId) {
+      this.log(`[Runtime] Cannot promote empty slot ${normalized + 1}.`);
+      return;
+    }
+
+    this.primarySlotIndex = normalized;
+    this.selectedHeroId = heroId;
+    this.normalizePrimarySelection(unlocked);
+    this.applyPartySelection({
+      refreshRoster: options.refreshRoster ?? false,
       resetEncounter: options.resetEncounter ?? false,
     });
   }
@@ -424,14 +504,19 @@ export class SimulationRuntime {
     }
 
     for (let index = 0; index < this.maxPartySize; index += 1) {
-      if (index < sanitized.length) {
-        this.selectedHeroIds[index] = sanitized[index];
-      } else {
-        this.selectedHeroIds[index] = null;
+      this.selectedHeroIds[index] = index < sanitized.length ? sanitized[index] : null;
+    }
+
+    if (this.selectedHeroId) {
+      const primaryIndex = this.selectedHeroIds.findIndex(
+        (id, idx) => idx < unlocked && id === this.selectedHeroId
+      );
+      if (primaryIndex >= 0) {
+        this.primarySlotIndex = primaryIndex;
       }
     }
 
-    this.normalizePartyLeader();
+    this.normalizePrimarySelection(unlocked);
     this.applyPartySelection({
       refreshRoster: false,
       resetEncounter: options.resetEncounter ?? false,
@@ -931,26 +1016,46 @@ export class SimulationRuntime {
     this.emitState();
   }
 
-  protected normalizePartyLeader() {
+  protected normalizePrimarySelection(unlockedSlots?: number) {
     this.ensurePartyArrayShape();
-    const unlocked = this.calculateUnlockedPartySize();
-    const ordered: (string | null)[] = [];
-    const seen = new Set<string>();
-    for (let index = 0; index < unlocked; index += 1) {
-      const heroId = this.selectedHeroIds[index];
-      if (!heroId) {
-        continue;
-      }
-      if (seen.has(heroId)) {
-        continue;
-      }
-      ordered.push(heroId);
-      seen.add(heroId);
+    const unlocked = typeof unlockedSlots === "number" ? unlockedSlots : this.calculateUnlockedPartySize();
+    if (unlocked <= 0) {
+      this.primarySlotIndex = 0;
+      this.selectedHeroId = null;
+      return;
     }
-    for (let index = 0; index < unlocked; index += 1) {
-      this.selectedHeroIds[index] = ordered[index] ?? null;
+
+    let resolvedIndex = Math.max(0, Math.min(unlocked - 1, this.primarySlotIndex));
+    let resolvedHeroId = resolvedIndex < unlocked ? this.selectedHeroIds[resolvedIndex] ?? null : null;
+
+    if (this.selectedHeroId) {
+      const preferredIndex = this.selectedHeroIds.findIndex(
+        (id, idx) => idx < unlocked && id === this.selectedHeroId
+      );
+      if (preferredIndex >= 0) {
+        resolvedIndex = preferredIndex;
+        resolvedHeroId = this.selectedHeroId;
+      }
     }
-    this.selectedHeroId = this.selectedHeroIds[0] ?? null;
+
+    if (!resolvedHeroId) {
+      const fallbackIndex = this.selectedHeroIds.findIndex(
+        (id, idx) => idx < unlocked && Boolean(id)
+      );
+      if (fallbackIndex >= 0) {
+        resolvedIndex = fallbackIndex;
+        resolvedHeroId = this.selectedHeroIds[fallbackIndex];
+      }
+    }
+
+    if (!resolvedHeroId) {
+      this.primarySlotIndex = Math.max(0, Math.min(unlocked - 1, resolvedIndex));
+      this.selectedHeroId = null;
+      return;
+    }
+
+    this.primarySlotIndex = resolvedIndex;
+    this.selectedHeroId = resolvedHeroId;
   }
 
   protected ensurePartyArrayShape() {
@@ -969,24 +1074,38 @@ export class SimulationRuntime {
     }
 
     const unlockedSlots = this.calculateUnlockedPartySize();
-    const activeIds = new Set(
-      this.selectedHeroIds.slice(0, unlockedSlots).filter((value): value is string => Boolean(value))
-    );
-    Array.from(this.partyRoster.keys()).forEach((id) => {
-      if (!activeIds.has(id)) {
-        this.partyRoster.delete(id);
-      }
-    });
-    const nextParty: Character[] = [];
+    this.normalizePrimarySelection(unlockedSlots);
+
+    const slotOrder: number[] = [];
+    if (
+      this.primarySlotIndex < unlockedSlots &&
+      this.selectedHeroIds[this.primarySlotIndex]
+    ) {
+      slotOrder.push(this.primarySlotIndex);
+    }
     for (let slot = 0; slot < unlockedSlots; slot += 1) {
+      if (slot === this.primarySlotIndex) {
+        continue;
+      }
+      if (this.selectedHeroIds[slot]) {
+        slotOrder.push(slot);
+      }
+    }
+
+    const nextParty: Character[] = [];
+    const activeSlots: number[] = [];
+    const activeIds: string[] = [];
+
+    slotOrder.forEach((slot) => {
       const heroId = this.selectedHeroIds[slot];
       if (!heroId) {
-        continue;
+        return;
       }
-
       const definition = this.heroes.find((hero) => hero.id === heroId);
       if (!definition) {
-        continue;
+        this.log(`[Runtime] Hero '${heroId}' not found. Clearing slot ${slot + 1}.`);
+        this.selectedHeroIds[slot] = null;
+        return;
       }
 
       let character = this.partyRoster.get(heroId);
@@ -996,11 +1115,31 @@ export class SimulationRuntime {
         this.partyRoster.set(heroId, character);
       }
       nextParty.push(character);
+      activeSlots.push(slot);
+      activeIds.push(heroId);
+    });
+
+    if (!fresh) {
+      const activeSet = new Set(activeIds);
+      Array.from(this.partyRoster.keys()).forEach((id) => {
+        if (!activeSet.has(id)) {
+          this.partyRoster.delete(id);
+        }
+      });
     }
 
     this.party = nextParty;
+    this.activePartySlots = activeSlots;
+    this.activePartyIds = activeIds;
     this.hero = this.party[0] ?? null;
-    this.selectedHeroId = this.selectedHeroIds[0] ?? this.selectedHeroId ?? null;
+
+    if (activeIds.length) {
+      this.primarySlotIndex = activeSlots[0];
+      this.selectedHeroId = activeIds[0];
+    } else {
+      this.selectedHeroId = null;
+    }
+
     this.applyProgressionBonusesToParty();
   }
 
@@ -1056,12 +1195,23 @@ export class SimulationRuntime {
       this.selectedHeroIds = new Array(this.maxPartySize).fill(null);
     }
     const unlocked = this.calculateUnlockedPartySize();
+    const assigned = new Set(
+      this.selectedHeroIds.filter((value): value is string => Boolean(value))
+    );
+    let heroCursor = 0;
     for (let slot = 0; slot < unlocked; slot += 1) {
-      if (!this.selectedHeroIds[slot]) {
-        const definition = this.heroes[slot];
-        if (definition) {
-          this.selectedHeroIds[slot] = definition.id;
-        }
+      if (this.selectedHeroIds[slot]) {
+        assigned.add(this.selectedHeroIds[slot]!);
+        continue;
+      }
+      while (heroCursor < this.heroes.length && assigned.has(this.heroes[heroCursor].id)) {
+        heroCursor += 1;
+      }
+      if (heroCursor < this.heroes.length) {
+        const heroId = this.heroes[heroCursor].id;
+        this.selectedHeroIds[slot] = heroId;
+        assigned.add(heroId);
+        heroCursor += 1;
       }
     }
   }
