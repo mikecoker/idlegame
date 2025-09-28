@@ -14,7 +14,7 @@ import {
   TelemetryRow,
   StatRow,
   StatPreviewRow,
-} from "./legacyHarness";
+} from "./simulatorHarness";
 import ControlBar from "./components/ControlBar";
 import CraftingPanel from "./components/CraftingPanel";
 import HistoryPanel from "./components/HistoryPanel";

@@ -1,5 +1,5 @@
 import type { ChangeEvent, FC } from "react";
-import type { ControlStatePayload } from "../legacyHarness";
+import type { ControlStatePayload } from "../simulatorHarness";
 
 interface ControlBarProps {
   controls: ControlStatePayload | null;

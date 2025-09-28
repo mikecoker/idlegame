@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { CraftingStatePayload, CraftingGroupState } from "../legacyHarness";
+import type { CraftingStatePayload, CraftingGroupState } from "../simulatorHarness";
 
 interface CraftingPanelProps {
   crafting: CraftingStatePayload | null;

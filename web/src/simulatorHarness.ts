@@ -82,7 +82,7 @@ interface CombatTelemetry {
 }
 
 interface PersistedState {
-  version: number;
+  version: 2;
   heroId: string;
   stageIndex: number;
   totalWavesCompleted: number;
@@ -93,13 +93,8 @@ interface PersistedState {
   heroProgress?: CharacterProgressSnapshot;
   history?: EncounterHistoryEntry[];
   historyCounter?: number;
-  materialsStock?: Record<string, number>;
-  equippedItems?: Record<string, string | null>;
-  consumables?: Record<string, number>;
-  equipmentInventory?: Record<string, number>;
-  equippedItemsV2?: Record<string, OwnedEquipment | null>;
-  equipmentInventoryV2?: OwnedEquipment[];
   inventorySnapshot?: InventorySnapshot;
+  resumeAfterVictory?: boolean;
   timestamp: number;
 }
 
@@ -638,56 +633,6 @@ export class SimulatorHarness {
     );
     this.materialsStock = { ...(snapshot.materials ?? {}) };
     this.consumables = { ...(snapshot.consumables ?? {}) };
-  }
-
-  protected buildSnapshotFromLegacyState(state: PersistedState): InventorySnapshot {
-    const materials = { ...(state.materialsStock ?? {}) };
-    const consumables = { ...(state.consumables ?? {}) };
-
-    const equipped: Record<string, OwnedEquipment | null> = {
-      MainHand: null,
-      OffHand: null,
-      Head: null,
-      Chest: null,
-    };
-
-    if (state.equippedItemsV2) {
-      Object.entries(state.equippedItemsV2).forEach(([slot, value]) => {
-        equipped[slot] = value ? this.cloneOwnedEquipment(value) : null;
-      });
-    } else if (state.equippedItems) {
-      Object.entries(state.equippedItems).forEach(([slot, itemId]) => {
-        if (!itemId) {
-          equipped[slot] = null;
-          return;
-        }
-        const owned = this.createOwnedEquipmentInstance(itemId, "common");
-        equipped[slot] = owned ? owned : null;
-      });
-    }
-
-    const inventory: OwnedEquipment[] = [];
-    if (state.equipmentInventoryV2) {
-      state.equipmentInventoryV2.forEach((item) => {
-        inventory.push(this.cloneOwnedEquipment(item));
-      });
-    } else if (state.equipmentInventory) {
-      Object.entries(state.equipmentInventory).forEach(([itemId, qty]) => {
-        for (let index = 0; index < qty; index += 1) {
-          const owned = this.createOwnedEquipmentInstance(itemId, "common");
-          if (owned) {
-            inventory.push(owned);
-          }
-        }
-      });
-    }
-
-    return {
-      equipped,
-      inventory,
-      materials,
-      consumables,
-    };
   }
 
   protected syncInventoryView() {
@@ -1304,27 +1249,6 @@ export class SimulatorHarness {
     return Object.entries(cost).every(
       ([id, qty]) => (this.materialsStock[id] ?? 0) >= qty
     );
-  }
-
-  protected createOwnedEquipmentInstance(itemId: string, rarity: ItemRarity = "common"): OwnedEquipment | null {
-    const def = this.itemDefs.get(itemId);
-    if (!def) {
-      console.warn(`[Harness] Unknown equipment '${itemId}'.`);
-      return null;
-    }
-    const instanceId = `${itemId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    return {
-      instanceId,
-      itemId: def.id,
-      rarity,
-      upgradeLevel: 0,
-      maxUpgradeLevel: Math.max(
-        0,
-        def.upgrades ? def.upgrades.length : def.maxUpgradeLevel ?? 3
-      ),
-      socketSlots: Math.max(0, def.socketSlots ?? 0),
-      augments: [],
-    };
   }
 
   protected craftEquipment(recipeId: string): boolean {
@@ -2075,50 +1999,44 @@ export class SimulatorHarness {
         };
       }
 
-      const snapshot = this.inventorySnapshot ?? {
+      const baseSnapshot = this.inventorySnapshot ?? {
         equipped: {},
         inventory: [],
         materials: {},
         consumables: {},
       };
 
-      const equippedSnapshot: Record<string, OwnedEquipment | null> = {};
-      Object.entries(snapshot.equipped ?? {}).forEach(([slot, owned]) => {
-        equippedSnapshot[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
+      const snapshot: InventorySnapshot = {
+        equipped: {},
+        inventory: [],
+        materials: { ...(baseSnapshot.materials ?? {}) },
+        consumables: { ...(baseSnapshot.consumables ?? {}) },
+      };
+
+      Object.entries(baseSnapshot.equipped ?? {}).forEach(([slot, owned]) => {
+        snapshot.equipped[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
       });
 
-      const legacyEquipped: Record<string, string | null> = {};
-      Object.entries(equippedSnapshot).forEach(([slot, owned]) => {
-        legacyEquipped[slot] = owned ? owned.itemId : null;
-      });
+      snapshot.inventory = (baseSnapshot.inventory ?? []).map((item) =>
+        this.cloneOwnedEquipment(item)
+      );
 
-      const inventorySnapshot = snapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [];
-      const legacyInventory = inventorySnapshot.reduce<Record<string, number>>((map, item) => {
-        map[item.itemId] = (map[item.itemId] ?? 0) + 1;
-        return map;
-      }, {});
-
-      const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id;
+      const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id ?? "";
 
       const state: PersistedState = {
-        version: 1,
-        heroId: heroId ?? this.heroOptions[0]?.id,
+        version: 2,
+        heroId,
         stageIndex: this.stageIndex,
         totalWavesCompleted: this.totalWavesCompleted,
         tickInterval: this.tickIntervalSeconds,
         lootTableId: this.selectedLootId ?? undefined,
-        rewards: this.totalRewards,
-        lastRewards: this.lastRewards,
+        rewards: normalizeRewards(this.totalRewards),
+        lastRewards: normalizeRewards(this.lastRewards),
         heroProgress: this.hero.serializeProgress(),
         history: this.history.slice(-40),
         historyCounter: this.historyCounter,
-        materialsStock: { ...snapshot.materials },
-        equippedItems: legacyEquipped,
-        consumables: { ...snapshot.consumables },
-        equipmentInventory: legacyInventory,
-        equippedItemsV2: equippedSnapshot,
-        equipmentInventoryV2: inventorySnapshot,
         inventorySnapshot: snapshot,
+        resumeAfterVictory: this.resumeAfterVictory,
         timestamp: Date.now(),
       };
 
@@ -2135,7 +2053,8 @@ export class SimulatorHarness {
         return false;
       }
       const state = JSON.parse(raw) as PersistedState;
-      if (!state || state.version !== 1) {
+      if (!state || state.version !== 2) {
+        window.localStorage.removeItem(STORAGE_KEY);
         return false;
       }
       if (this.heroOptions.some((option) => option.id === state.heroId)) {
@@ -2159,6 +2078,7 @@ export class SimulatorHarness {
       this.lastRewards = normalizeRewards(state.lastRewards);
 
       this.pendingSourceProgress = state.heroProgress;
+      this.resumeAfterVictory = !!state.resumeAfterVictory;
 
       if (this.listeners.onControls) {
         this.notifyControlState();
@@ -2167,7 +2087,22 @@ export class SimulatorHarness {
       this.history = state.history ? state.history.slice(-40) : [];
       this.historyCounter = state.historyCounter ?? this.history.length;
       this.renderHistory();
-      const snapshot = state.inventorySnapshot ?? this.buildSnapshotFromLegacyState(state);
+      const sourceSnapshot = state.inventorySnapshot ?? null;
+      const snapshot: InventorySnapshot = {
+        equipped: {},
+        inventory: [],
+        materials: { ...(sourceSnapshot?.materials ?? {}) },
+        consumables: { ...(sourceSnapshot?.consumables ?? {}) },
+      };
+
+      Object.entries(sourceSnapshot?.equipped ?? {}).forEach(([slot, owned]) => {
+        snapshot.equipped[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
+      });
+
+      snapshot.inventory = (sourceSnapshot?.inventory ?? []).map((item) =>
+        this.cloneOwnedEquipment(item)
+      );
+
       if (this.runtime) {
         this.runtime.setInventorySnapshot(snapshot);
       }
@@ -2295,6 +2230,7 @@ export class SimulatorHarness {
   setAutoResume(enabled: boolean) {
     this.resumeAfterVictory = enabled;
     this.notifyControlState();
+    this.persistState();
   }
 
   selectHero(heroId: string) {

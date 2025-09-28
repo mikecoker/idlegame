@@ -4,7 +4,7 @@ import type {
   ItemDefinition,
   OwnedEquipment,
   StatPreviewRow,
-} from "../legacyHarness";
+} from "../simulatorHarness";
 import {
   describeItemDetails,
   formatOwnedSummary,

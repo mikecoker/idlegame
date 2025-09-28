@@ -4,7 +4,7 @@ import type {
   ItemDefinition,
   OwnedEquipment,
   StatRow,
-} from "../legacyHarness";
+} from "../simulatorHarness";
 import { formatAugmentNames, formatOwnedSummary } from "../utils/formatting";
 
 interface PaperdollProps {

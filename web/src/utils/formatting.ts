@@ -1,5 +1,5 @@
 import type { EncounterRewards } from "@core/combat/Encounter";
-import type { ItemDefinition, OwnedEquipment } from "../legacyHarness";
+import type { ItemDefinition, OwnedEquipment } from "../simulatorHarness";
 
 export function titleCase(value: string): string {
   if (!value) {

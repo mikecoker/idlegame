@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { EncounterHistoryEntry } from "../legacyHarness";
+import type { EncounterHistoryEntry } from "../simulatorHarness";
 import { formatRewardsShort } from "../utils/formatting";
 
 interface HistoryPanelProps {

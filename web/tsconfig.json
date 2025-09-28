@@ -8,7 +8,10 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@core/*": ["../core/*"],
+      "@assets/*": ["../assets/*"],
+      "@web/*": ["../web/*"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,

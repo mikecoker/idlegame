@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { TelemetryRow } from "../legacyHarness";
+import type { TelemetryRow } from "../simulatorHarness";
 
 interface TelemetryPanelProps {
   rows: TelemetryRow[];

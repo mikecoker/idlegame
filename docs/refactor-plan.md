@@ -8,7 +8,7 @@
 
 ## Current State Observations
 - Core combat (`assets/game/combatsim.ts`, `character.ts`, `encounter.ts`) lives under the Cocos asset tree and leaks Cocos concepts (e.g., `Component` lifecycle in `Simulator.ts`).
-- React harness (`web/src/legacyHarness.ts`) fetches JSON directly from `assets/data`, but duplicates encounter orchestration, loot logic, progression, and persistence.
+- React harness (`web/src/simulatorHarness.ts`) fetches JSON directly from `assets/data`, but duplicates encounter orchestration, loot logic, progression, and persistence.
 - Stage progression JSON (`assets/data/encounters/progression.json`) encodes a short fixed campaign rather than the scalable, formula-driven structure in `NewDesign.md`.
 - Equipment, consumables, prestige, and other systems exist only as stubs or simple tables; none respect the richer scaling, unlocks, or resource flows promised in the new design.
 - Save data format is tightly coupled to the legacy harness state shape and will not extend cleanly once multi-creature parties, evolutions, or offline progress arrive.
@@ -56,7 +56,7 @@
 - Create `core/` directory and move `character.ts`, `stat.ts`, `item.ts`, `combatsim.ts`, and `encounter.ts` into it, removing any Cocos imports.
 - Introduce `SimulationRuntime` that wraps `CombatSim` + `EncounterLoop` and exposes lifecycle (`loadData`, `startEncounter`, `tick`, `getState`).
 - Implement `DataSource` abstraction with temporary adapters that proxy current JSON layouts, keeping legacy functionality intact.
-- Update `assets/game/Simulator.ts` and `web/src/legacyHarness.ts` to consume the new runtime façade while still using legacy data.
+- Update `assets/game/Simulator.ts` and `web/src/simulatorHarness.ts` to consume the new runtime façade while still using legacy data.
 
 ### Phase 2 – Stage & Progression Overhaul
 - Replace stage JSON with `stage-rules.json` capturing base wave count, boss frequency, and scaling parameters from `NewDesign.md` (HP/DMG/DEF/SPD, rewards, boss enrage).
@@ -97,7 +97,7 @@
 - Update Cocos `Simulator` component to own only editor bindings and visual hooks, delegating all game logic to `SimulationRuntime`. Serialize editor-assigned JSON assets into the runtime via `CocosDataSource`.
 - Replace `SimulatorHarness` in React with a new hook-based wrapper around the core API (`useSimulationRuntime`), keeping existing components but swapping data sources.
 - Provide shared TypeScript types in `core` for UI consumption (status payloads, inventory snapshots) so both platforms render identical state without duplicating formatters.
-- Gradually retire `legacyHarness.ts` by implementing feature parity in the new wrapper, then removing obsolete code once testing completes.
+- Gradually retire the legacy harness shims by implementing feature parity in the new wrapper, then removing obsolete code once testing completes.
 
 ## Incremental Migration Plan
 1. Land Phase 1 core extraction and adapt both frontends without changing gameplay.

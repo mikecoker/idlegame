@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import type { StatusPayload } from "../legacyHarness";
+import type { StatusPayload } from "../simulatorHarness";
 
 interface StatusPanelProps {
   status: StatusPayload | null;
