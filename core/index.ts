@@ -12,6 +12,7 @@ export { Character, CharacterData } from "./characters/Character";
 export type { CharacterProgressSnapshot } from "./characters/Character";
 export * from "./items/constants";
 export * from "./items/Item";
+export * from "./items/ItemDefinition";
 export * from "./stats/StatBlock";
 export * from "./progression/Stage";
 export * from "./economy/LootTable";
@@ -22,3 +23,8 @@ export type {
   SimulationRuntimeOptions,
   SimulationState,
 } from "./runtime/SimulationRuntime";
+export type {
+  InventoryMutationResult,
+  InventorySnapshot,
+  ConsumableUseResult,
+} from "./runtime/PlayerInventory";

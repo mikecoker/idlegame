@@ -287,6 +287,14 @@ export class Character {
     return found[0];
   }
 
+  public clearEquipment() {
+    if (!this._equipment.length) {
+      return;
+    }
+    this._equipment = [];
+    this.updateStats();
+  }
+
   protected updateItemStats() {
     this._itemBonuses.reset();
     this._equipment.forEach((e) => {

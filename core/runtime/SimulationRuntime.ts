@@ -3,6 +3,7 @@ import {
   EncounterEvent,
   EncounterLoop,
   EncounterSummary,
+  EncounterRewards,
 } from "../combat/Encounter";
 import { Character, CharacterData } from "../characters/Character";
 import { GameDataSource, HeroDefinition } from "../data/DataSource";
@@ -21,6 +22,17 @@ import {
   StageDefinition,
   StageComposition,
 } from "../progression/Stage";
+import {
+  CraftingRecipe,
+  ItemDefinition,
+  ItemLibrary,
+} from "../items/ItemDefinition";
+import {
+  ConsumableUseResult,
+  InventoryMutationResult,
+  InventorySnapshot,
+  PlayerInventory,
+} from "./PlayerInventory";
 
 export interface SimulationRuntimeHooks {
   onStateChanged?(state: SimulationState): void;
@@ -57,6 +69,8 @@ export class SimulationRuntime {
   protected enemyPools: Record<string, EnemyUnit[]> = { small: [], medium: [], boss: [] };
   protected stages: StageDefinition[] = [];
   protected lootTables: Map<string, LootTableConfig> = new Map();
+  protected itemDefinitions: ItemDefinition[] = [];
+  protected craftingRecipes: CraftingRecipe[] = [];
 
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
@@ -78,6 +92,9 @@ export class SimulationRuntime {
   protected selectedLootId: string | null = null;
 
   protected initialized = false;
+  protected itemLibrary = new ItemLibrary();
+  protected playerInventory = new PlayerInventory(this.itemLibrary);
+  protected pendingInventorySnapshot: InventorySnapshot | null = null;
 
   constructor(
     protected readonly dataSource: GameDataSource,
@@ -116,6 +133,15 @@ export class SimulationRuntime {
       this.lootTables.set(fallback.id, fallback);
     }
 
+    this.itemDefinitions = await this.dataSource.loadItemDefinitions();
+    this.itemLibrary.setDefinitions(this.itemDefinitions);
+    this.craftingRecipes = await this.dataSource.loadCraftingRecipes();
+    this.playerInventory.reset();
+    if (this.pendingInventorySnapshot) {
+      this.playerInventory.setSnapshot(this.pendingInventorySnapshot);
+      this.pendingInventorySnapshot = null;
+    }
+
     if (!this.selectedHeroId && this.heroes.length) {
       this.selectedHeroId = this.heroes[0].id;
     }
@@ -124,6 +150,7 @@ export class SimulationRuntime {
     }
 
     this.ensureHero(freshHero);
+    this.refreshHeroLoadout(false);
     this.resetEncounterInternal();
     this.initialized = true;
     this.emitState();
@@ -180,6 +207,7 @@ export class SimulationRuntime {
   setHero(heroId: string, fresh = true) {
     this.selectedHeroId = heroId;
     this.ensureHero(fresh);
+    this.refreshHeroLoadout();
     this.emitState();
   }
 
@@ -198,11 +226,152 @@ export class SimulationRuntime {
     this.emitState();
   }
 
+  listItemDefinitions(): ItemDefinition[] {
+    return this.itemLibrary.listDefinitions();
+  }
+
+  getItemDefinition(itemId: string): ItemDefinition | undefined {
+    return this.itemLibrary.getDefinition(itemId);
+  }
+
+  listCraftingRecipes(): CraftingRecipe[] {
+    return this.craftingRecipes.map((recipe) => ({
+      ...recipe,
+      cost: { ...(recipe.cost ?? {}) },
+    }));
+  }
+
+  getInventorySnapshot(): InventorySnapshot {
+    return this.playerInventory.getSnapshot();
+  }
+
+  setInventorySnapshot(snapshot: InventorySnapshot | null) {
+    if (!snapshot) {
+      this.playerInventory.reset();
+      this.pendingInventorySnapshot = null;
+      if (this.initialized) {
+        this.refreshHeroLoadout();
+        this.emitState();
+      }
+      return;
+    }
+
+    const clone = this.cloneInventorySnapshot(snapshot);
+    if (!this.initialized) {
+      this.pendingInventorySnapshot = clone;
+      return;
+    }
+
+    this.playerInventory.setSnapshot(clone);
+    this.refreshHeroLoadout();
+    this.emitState();
+  }
+
+  equipFromInventory(instanceId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.equipFromInventory(instanceId);
+    return this.processInventoryMutation(result);
+  }
+
+  equipFirstMatching(itemId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.equipFirstMatching(itemId);
+    return this.processInventoryMutation(result);
+  }
+
+  upgradeOwnedEquipment(instanceId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.upgradeEquipment(instanceId);
+    return this.processInventoryMutation(result);
+  }
+
+  salvageOwnedEquipment(instanceId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.salvageEquipment(instanceId);
+    return this.processInventoryMutation(result);
+  }
+
+  socketOwnedEquipment(instanceId: string, augmentId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.socketEquipment(instanceId, augmentId);
+    return this.processInventoryMutation(result);
+  }
+
+  useConsumableItem(consumableId: string): ConsumableUseResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      const messages = guard.messages ?? ["Inventory unavailable."];
+      messages.forEach((message) => this.log(`[Consumable] ${message}`));
+      return {
+        success: false,
+        messages,
+      };
+    }
+    const result = this.playerInventory.useConsumable(consumableId);
+    if (result.success && result.effect?.kind === "heal" && this.hero) {
+      this.hero.healPercent(result.effect.percent);
+    }
+    return this.processConsumableResult(result);
+  }
+
+  craftRecipe(recipeId: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const recipe = this.craftingRecipes.find((entry) => entry.id === recipeId);
+    if (!recipe) {
+      return {
+        success: false,
+        messages: [`Recipe '${recipeId}' not found.`],
+      };
+    }
+    const result = this.playerInventory.craftRecipe(recipe);
+    return this.processInventoryMutation(result);
+  }
+
+  grantEncounterRewards(rewards: EncounterRewards): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.grantRewards(rewards);
+    return this.processInventoryMutation(result);
+  }
+
+  getUpgradeCostForInstance(instanceId: string): Record<string, number> | null {
+    return this.playerInventory.getUpgradeCostForInstance(instanceId);
+  }
+
+  getSalvageResultForInstance(instanceId: string) {
+    return this.playerInventory.getSalvageResultForInstance(instanceId);
+  }
+
+  getAvailableAugmentIds(): string[] {
+    return this.playerInventory.getAvailableAugments();
+  }
+
   resetEncounter(autoStart = this.autoStart, freshHero = true) {
     if (!this.initialized) {
       return;
     }
     this.ensureHero(freshHero);
+    this.refreshHeroLoadout();
     this.resetEncounterInternal(autoStart);
   }
 
@@ -426,6 +595,75 @@ export class SimulationRuntime {
     }
 
     this.hero = new Character(this.cloneData(definition.data));
+  }
+
+  protected refreshHeroLoadout(resetVitals = false) {
+    if (!this.hero) {
+      return;
+    }
+    this.hero.clearEquipment();
+    const equipped = this.playerInventory.getEquippedEntries();
+    equipped.forEach(([, owned]) => {
+      const equipment = this.itemLibrary.createEquipmentForOwned(owned);
+      if (equipment) {
+        this.hero!.equipItem(equipment);
+      }
+    });
+    if (resetVitals) {
+      this.hero.resetVitals();
+    }
+  }
+
+  protected cloneInventorySnapshot(snapshot: InventorySnapshot): InventorySnapshot {
+    return JSON.parse(JSON.stringify(snapshot)) as InventorySnapshot;
+  }
+
+  protected processInventoryMutation(result: InventoryMutationResult): InventoryMutationResult {
+    if (result.messages) {
+      result.messages.forEach((message) => this.log(`[Inventory] ${message}`));
+    }
+    if (result.heroNeedsRefresh) {
+      this.refreshHeroLoadout();
+    }
+    if (result.resetEncounter) {
+      this.resetEncounter(false, false);
+      return result;
+    }
+    if (
+      result.heroNeedsRefresh ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.emitState();
+    }
+    return result;
+  }
+
+  protected processConsumableResult(result: ConsumableUseResult): ConsumableUseResult {
+    if (result.messages) {
+      result.messages.forEach((message) => this.log(`[Consumable] ${message}`));
+    }
+    if (result.success || result.consumablesChanged) {
+      this.emitState();
+    }
+    return result;
+  }
+
+  protected ensureInventoryReady(): InventoryMutationResult | null {
+    if (!this.initialized) {
+      return {
+        success: false,
+        messages: ["Simulation runtime not initialized."],
+      };
+    }
+    if (!this.hero) {
+      return {
+        success: false,
+        messages: ["Hero is not available."],
+      };
+    }
+    return null;
   }
 
   protected prepareNextWave(): boolean {

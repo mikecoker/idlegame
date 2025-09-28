@@ -1,4 +1,5 @@
 import type { CharacterData } from "../characters/Character";
+import type { CraftingRecipe, ItemDefinition } from "../items/ItemDefinition";
 import type { LootTableConfig } from "../economy/LootTable";
 import type { EnemyUnit, StageDefinition } from "../progression/Stage";
 
@@ -13,6 +14,8 @@ export interface GameDataSnapshot {
   enemyPools: Record<string, EnemyUnit[]>;
   stages: StageDefinition[];
   lootTables: LootTableConfig[];
+  items?: ItemDefinition[];
+  recipes?: CraftingRecipe[];
 }
 
 export interface GameDataSource {
@@ -20,6 +23,8 @@ export interface GameDataSource {
   loadEnemyPools(): Promise<Record<string, EnemyUnit[]>>;
   loadStages(): Promise<StageDefinition[]>;
   loadLootTables(): Promise<LootTableConfig[]>;
+  loadItemDefinitions(): Promise<ItemDefinition[]>;
+  loadCraftingRecipes(): Promise<CraftingRecipe[]>;
 }
 
 export class StaticDataSource implements GameDataSource {
@@ -39,5 +44,13 @@ export class StaticDataSource implements GameDataSource {
 
   async loadLootTables(): Promise<LootTableConfig[]> {
     return this.snapshot.lootTables;
+  }
+
+  async loadItemDefinitions(): Promise<ItemDefinition[]> {
+    return this.snapshot.items ?? [];
+  }
+
+  async loadCraftingRecipes(): Promise<CraftingRecipe[]> {
+    return this.snapshot.recipes ?? [];
   }
 }

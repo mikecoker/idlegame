@@ -4,6 +4,7 @@ import {
   HeroDefinition,
 } from "../../core/data/DataSource";
 import { LootTableConfig } from "../../core/economy/LootTable";
+import { CraftingRecipe, ItemDefinition } from "../../core/items/ItemDefinition";
 import { EnemyUnit, StageDefinition } from "../../core/progression/Stage";
 
 export interface WebHeroManifestEntry {
@@ -25,6 +26,11 @@ export interface WebLootManifestEntry {
   path: string;
 }
 
+export interface WebItemManifestEntry {
+  id: string;
+  path: string;
+}
+
 export interface WebHeroManifest {
   presets: WebHeroManifestEntry[];
 }
@@ -37,12 +43,22 @@ export interface WebLootManifest {
   tables: WebLootManifestEntry[];
 }
 
+export interface WebItemManifest {
+  items: WebItemManifestEntry[];
+}
+
+export interface WebCraftingManifest {
+  recipes: CraftingRecipe[];
+}
+
 export interface WebDataSourceOptions {
   baseUrl?: string;
   heroManifestUrl: string;
   enemyManifestUrl: string;
   stageConfigUrl: string;
   lootManifestUrl: string;
+  itemManifestUrl: string;
+  craftingRecipesUrl: string;
   fetcher?: typeof fetch;
 }
 
@@ -143,6 +159,40 @@ export class WebDataSource implements GameDataSource {
       }
     }
     return tables;
+  }
+
+  async loadItemDefinitions(): Promise<ItemDefinition[]> {
+    const manifest = await this.loadJson<WebItemManifest>(this.options.itemManifestUrl);
+    if (!manifest?.items?.length) {
+      return [];
+    }
+
+    const items: ItemDefinition[] = [];
+    for (const entry of manifest.items) {
+      try {
+        const definition = await this.loadJson<ItemDefinition>(entry.path);
+        if (!definition) {
+          continue;
+        }
+        items.push(definition);
+      } catch (err) {
+        console.warn(`[WebDataSource] Failed to load item '${entry.id}'`, err);
+      }
+    }
+    return items;
+  }
+
+  async loadCraftingRecipes(): Promise<CraftingRecipe[]> {
+    const manifest = await this.loadJson<WebCraftingManifest>(
+      this.options.craftingRecipesUrl
+    );
+    if (!manifest?.recipes?.length) {
+      return [];
+    }
+    return manifest.recipes.map((recipe) => ({
+      ...recipe,
+      cost: { ...(recipe.cost ?? {}) },
+    }));
   }
 
   protected resolveUrl(path: string): string {

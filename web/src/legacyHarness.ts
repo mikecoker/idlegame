@@ -16,23 +16,26 @@ import {
 import { EquipmentSlot, ItemType } from "@core/items/constants";
 import { EquipmentItem, ItemRarity } from "@core/items/Item";
 import {
+  CraftingRecipe,
+  CraftingRecipeType,
+  ItemDefinition,
+  OwnedEquipment,
+} from "@core/items/ItemDefinition";
+import {
   StatBlock,
   WeaponStatBlock,
   ArmorStatBlock,
   StatBlockData,
 } from "@core/stats/StatBlock";
+import type { InventorySnapshot } from "@core/runtime/PlayerInventory";
+
+export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
+export type { OwnedEquipment, CraftingRecipe, ItemDefinition };
 import { WebDataSource } from "../../platforms/web/WebDataSource";
 
 interface Preset {
   id: string;
   label: string;
-  data: CharacterData;
-}
-
-interface EnemyUnit {
-  id: string;
-  label: string;
-  tier: string;
   data: CharacterData;
 }
 
@@ -78,64 +81,10 @@ interface CombatTelemetry {
   totalDamage: number;
 }
 
-export interface ItemDefinition {
-  id: string;
-  name: string;
-  tier: string;
-  type: "weapon" | "armor" | "consumable" | "augment";
-  slot?: string;
-  power?: number;
-  stats?: Partial<Record<keyof CharacterData["baseStats"], number>>;
-  weapon?: {
-    minDamage: number;
-    maxDamage: number;
-    delay: number;
-  };
-  armor?: {
-    armor: number;
-  };
-  effect?: {
-    kind: "heal";
-    percent: number;
-  };
-  socketSlots?: number;
-  maxUpgradeLevel?: number;
-  augment?: {
-    stats?: Partial<Record<keyof CharacterData["baseStats"], number>>;
-  };
-  upgrades?: Array<{
-    materials: Record<string, number>;
-  }>;
-}
-
-interface OwnedEquipment {
-  instanceId: string;
-  itemId: string;
-  rarity: ItemRarity;
-  upgradeLevel: number;
-  maxUpgradeLevel: number;
-  socketSlots: number;
-  augments: string[];
-}
-
-type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
-
-type CraftingRecipeType = "equipment" | "consumable" | "material";
-
-interface CraftingRecipe {
-  id: string;
-  result: string;
-  type: CraftingRecipeType;
-  tier: string;
-  cost: Record<string, number>;
-  resultAmount?: number;
-}
-
 interface PersistedState {
   version: number;
   heroId: string;
   stageIndex: number;
-  stageWaveCompleted: number;
   totalWavesCompleted: number;
   tickInterval: number;
   lootTableId?: string;
@@ -150,6 +99,7 @@ interface PersistedState {
   equipmentInventory?: Record<string, number>;
   equippedItemsV2?: Record<string, OwnedEquipment | null>;
   equipmentInventoryV2?: OwnedEquipment[];
+  inventorySnapshot?: InventorySnapshot;
   timestamp: number;
 }
 
@@ -197,12 +147,6 @@ const resolveDataUrl = (relativePath: string) => {
   return `${import.meta.env.BASE_URL}${trimmed}`;
 };
 
-const HERO_SOURCES = [
-  { id: "hero", label: "Hero", path: "assets/data/hero.json" },
-  { id: "rogue", label: "Rogue", path: "assets/data/rogue.json" },
-  { id: "warrior", label: "Warrior", path: "assets/data/warrior.json" },
-];
-
 const STORAGE_KEY = "idle-eq-harness-state-v2";
 const RARITY_MULTIPLIERS: Record<ItemRarity, number> = {
   common: 1,
@@ -210,14 +154,6 @@ const RARITY_MULTIPLIERS: Record<ItemRarity, number> = {
   rare: 1.25,
   epic: 1.4,
   legendary: 1.6,
-};
-
-const SALVAGE_VALUE_BY_RARITY: Record<ItemRarity, number> = {
-  common: 1,
-  uncommon: 2,
-  rare: 4,
-  epic: 7,
-  legendary: 12,
 };
 
 const UPGRADE_SCALE_PER_LEVEL = 0.05;
@@ -377,25 +313,19 @@ export class SimulatorHarness {
   protected dataSource: WebDataSource | null = null;
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
+  protected lastSummary: EncounterSummary | null = null;
 
   protected heroOptions: Preset[] = [];
-  protected enemyPools: Record<string, EnemyUnit[]> = {
-    small: [],
-    medium: [],
-    boss: [],
-  };
   protected stages: StageDefinition[] = [];
   protected itemDefs: Map<string, ItemDefinition> = new Map();
   protected recipes: CraftingRecipe[] = [];
   protected recipeMap: Map<string, CraftingRecipe> = new Map();
 
   protected stageIndex = 0;
-  protected stageWaveCompleted = 0;
   protected totalWavesCompleted = 0;
   protected currentWaveNumber = 0;
   protected currentStageName = "";
   protected currentEnemyLabel = "";
-  protected currentWaveQueue: EnemyUnit[] = [];
 
   protected lootTables: LootTableRecord[] = [];
   protected rewardConfig: EncounterRewardConfig = {
@@ -407,6 +337,7 @@ export class SimulatorHarness {
   protected selectedLootId: string | null = null;
   protected selectedHeroId: string | null = null;
   protected materialsStock: Record<string, number> = {};
+  protected inventorySnapshot: InventorySnapshot | null = null;
   protected equippedItems: Record<EquippedSlotKey, OwnedEquipment | null> = {
     MainHand: null,
     OffHand: null,
@@ -436,7 +367,7 @@ export class SimulatorHarness {
 
   protected tickIntervalSeconds = 0.1;
   protected pendingSourceProgress?: CharacterProgressSnapshot;
-  protected autoStart = true;
+  protected autoStart = false;
 
   protected history: EncounterHistoryEntry[] = [];
   protected notifyInventory() {
@@ -668,6 +599,97 @@ export class SimulatorHarness {
     return entries.map(([id, qty]) => `${id} x${qty}`).join(", ");
   }
 
+  protected refreshInventorySnapshot() {
+    if (!this.runtime) {
+      return;
+    }
+    try {
+      const snapshot = this.runtime.getInventorySnapshot();
+      this.inventorySnapshot = {
+        equipped: { ...(snapshot.equipped ?? {}) },
+        inventory: snapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [],
+        materials: { ...(snapshot.materials ?? {}) },
+        consumables: { ...(snapshot.consumables ?? {}) },
+      };
+      this.applyInventorySnapshot(this.inventorySnapshot);
+      this.syncInventoryView();
+    } catch (err) {
+      console.warn("[Harness] Failed to refresh inventory snapshot", err);
+    }
+  }
+
+  protected applyInventorySnapshot(snapshot: InventorySnapshot) {
+    const defaults: Record<EquippedSlotKey, OwnedEquipment | null> = {
+      MainHand: null,
+      OffHand: null,
+      Head: null,
+      Chest: null,
+    };
+
+    Object.entries(snapshot.equipped ?? {}).forEach(([slot, owned]) => {
+      if (slot in defaults) {
+        defaults[slot as EquippedSlotKey] = owned ? this.cloneOwnedEquipment(owned) : null;
+      }
+    });
+
+    this.equippedItems = defaults;
+    this.equipmentInventory = (snapshot.inventory ?? []).map((item) =>
+      this.cloneOwnedEquipment(item)
+    );
+    this.materialsStock = { ...(snapshot.materials ?? {}) };
+    this.consumables = { ...(snapshot.consumables ?? {}) };
+  }
+
+  protected buildSnapshotFromLegacyState(state: PersistedState): InventorySnapshot {
+    const materials = { ...(state.materialsStock ?? {}) };
+    const consumables = { ...(state.consumables ?? {}) };
+
+    const equipped: Record<string, OwnedEquipment | null> = {
+      MainHand: null,
+      OffHand: null,
+      Head: null,
+      Chest: null,
+    };
+
+    if (state.equippedItemsV2) {
+      Object.entries(state.equippedItemsV2).forEach(([slot, value]) => {
+        equipped[slot] = value ? this.cloneOwnedEquipment(value) : null;
+      });
+    } else if (state.equippedItems) {
+      Object.entries(state.equippedItems).forEach(([slot, itemId]) => {
+        if (!itemId) {
+          equipped[slot] = null;
+          return;
+        }
+        const owned = this.createOwnedEquipmentInstance(itemId, "common");
+        equipped[slot] = owned ? owned : null;
+      });
+    }
+
+    const inventory: OwnedEquipment[] = [];
+    if (state.equipmentInventoryV2) {
+      state.equipmentInventoryV2.forEach((item) => {
+        inventory.push(this.cloneOwnedEquipment(item));
+      });
+    } else if (state.equipmentInventory) {
+      Object.entries(state.equipmentInventory).forEach(([itemId, qty]) => {
+        for (let index = 0; index < qty; index += 1) {
+          const owned = this.createOwnedEquipmentInstance(itemId, "common");
+          if (owned) {
+            inventory.push(owned);
+          }
+        }
+      });
+    }
+
+    return {
+      equipped,
+      inventory,
+      materials,
+      consumables,
+    };
+  }
+
   protected syncInventoryView() {
     this.notifyInventory();
     this.notifyMaterials();
@@ -688,6 +710,8 @@ export class SimulatorHarness {
       enemyManifestUrl: "assets/data/enemies/manifest.json",
       stageConfigUrl: "assets/data/encounters/progression.json",
       lootManifestUrl: "assets/data/loot/manifest.json",
+      itemManifestUrl: "assets/data/items/manifest.json",
+      craftingRecipesUrl: "assets/data/crafting/recipes.json",
     });
 
     this.runtime = new SimulationRuntime(this.dataSource, {
@@ -740,6 +764,180 @@ export class SimulatorHarness {
     this.rewardConfig = this.findRewardConfig(this.selectedLootId);
   }
 
+  protected seedDefinitionsFromRuntime() {
+    if (!this.runtime) {
+      this.itemDefs = new Map();
+      this.recipes = [];
+      this.recipeMap = new Map();
+      return;
+    }
+
+    const defs = this.runtime.listItemDefinitions();
+    this.itemDefs = new Map();
+    defs.forEach((def) => {
+      this.itemDefs.set(def.id, def);
+    });
+
+    this.recipes = this.runtime.listCraftingRecipes();
+    this.recipeMap = new Map();
+    this.recipes.forEach((recipe) => {
+      this.recipeMap.set(recipe.id, recipe);
+    });
+  }
+
+  protected applyRuntimeState(state: SimulationState) {
+    const previousState = this.runtimeState;
+    const previousHero = this.hero;
+    const previousWave = previousState?.waveNumber ?? 0;
+    const previousStage = previousState?.stageIndex ?? -1;
+
+    this.runtimeState = state;
+    this.hero = state.hero ?? null;
+    this.enemy = state.enemy ?? null;
+
+    this.stageIndex = state.stageIndex;
+    const stageNameFallback = this.stages[state.stageIndex]?.name;
+    this.currentStageName = state.stageName ?? stageNameFallback ?? this.currentStageName;
+    this.currentWaveNumber = state.waveNumber;
+    this.totalWavesCompleted = state.totalWavesCompleted;
+    this.currentEnemyLabel = state.enemyLabel ?? this.currentEnemyLabel;
+    this.currentWaveIsBoss = state.isBossWave;
+    this.running = state.running;
+
+    if (state.lootTableId && state.lootTableId !== this.selectedLootId) {
+      this.selectedLootId = state.lootTableId;
+      this.rewardConfig = this.findRewardConfig(state.lootTableId);
+    }
+
+    const waveChanged =
+      state.waveNumber !== previousWave || state.stageIndex !== previousStage;
+    if (waveChanged) {
+      this.telemetry.hero = createTelemetryBucket();
+      this.telemetry.enemy = createTelemetryBucket();
+      this.renderTelemetry();
+      this.rewardClaimed = false;
+      this.lastSummary = null;
+    }
+
+    const heroChanged = this.hero && this.hero !== previousHero;
+    if (heroChanged) {
+      if (this.pendingSourceProgress && this.hero) {
+        this.hero.restoreProgress(this.pendingSourceProgress);
+        this.pendingSourceProgress = undefined;
+      }
+      this.hero?.resetVitals();
+      this.renderStatsTable();
+    }
+
+    if (!this.hero) {
+      this.renderStatsTable();
+    }
+
+    this.refreshStatus();
+    this.notifyControlState();
+  }
+
+  protected handleRuntimeState(state: SimulationState) {
+    this.applyRuntimeState(state);
+    this.tryUseConsumables();
+  }
+
+  protected handleRuntimeEvents(events: EncounterEvent[]) {
+    if (!events.length) {
+      return;
+    }
+
+    events.forEach((event) => {
+      const attackerIsHero = this.hero ? event.attacker === this.hero : false;
+      const defenderIsHero = this.hero ? event.defender === this.hero : false;
+      const bucket = attackerIsHero ? this.telemetry.hero : this.telemetry.enemy;
+
+      bucket.attempts += 1;
+      switch (event.result) {
+        case "hit":
+          bucket.hits += 1;
+          bucket.totalDamage += Math.max(0, event.damage);
+          if (event.critical) {
+            bucket.crits += 1;
+          }
+          break;
+        case "miss":
+          bucket.misses += 1;
+          break;
+        case "dodge":
+          bucket.dodges += 1;
+          break;
+        case "parry":
+          bucket.parries += 1;
+          break;
+      }
+
+      const attackerLabel = attackerIsHero ? "Hero" : "Enemy";
+      const defenderLabel = defenderIsHero ? "Hero" : "Enemy";
+      const stamp = event.timestamp.toFixed(2);
+      const hand = event.hand === "main" ? "main" : "off";
+      switch (event.result) {
+        case "miss":
+          this.pushLog(`[${stamp}s][${hand}] ${attackerLabel} swings at ${defenderLabel} and misses.`);
+          break;
+        case "dodge":
+          this.pushLog(`[${stamp}s][${hand}] ${defenderLabel} dodges ${attackerLabel}.`);
+          break;
+        case "parry":
+          this.pushLog(`[${stamp}s][${hand}] ${defenderLabel} parries ${attackerLabel}.`);
+          break;
+        case "hit":
+        default: {
+          const dmg = Math.round(event.damage);
+          const crit = event.critical ? " CRIT!" : "";
+          this.pushLog(`[${stamp}s][${hand}] ${attackerLabel} hits ${defenderLabel} for ${dmg}.${crit}`);
+          break;
+        }
+      }
+    });
+
+    this.renderTelemetry();
+    this.tryUseConsumables();
+    this.renderStatsTable();
+  }
+
+  protected handleRuntimeComplete(summary: EncounterSummary) {
+    this.lastSummary = summary;
+
+    if (summary.victor === "source") {
+      this.recordHistoryEntry("Victory", summary);
+      this.applyRewards(summary);
+      if (this.resumeAfterVictory) {
+        this.startAuto();
+      } else {
+        this.stopAuto();
+      }
+    } else if (summary.victor === "target") {
+      this.recordHistoryEntry("Defeat", summary);
+      this.pushLog("[Encounter] Hero defeated. Adjust loadout or crafting before retrying.");
+      this.stopAuto();
+    }
+
+    this.renderHistory();
+    this.refreshStatus(true);
+    this.renderStatsTable();
+  }
+
+  protected ensureAnimationLoop() {
+    if (this.rafHandle !== null) {
+      return;
+    }
+    this.lastTimestamp = performance.now();
+    this.rafHandle = requestAnimationFrame(this.onFrame);
+  }
+
+  protected stopAnimationLoop() {
+    if (this.rafHandle !== null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
+    }
+  }
+
   protected convertLootTableToRewardConfig(table: LootTableConfig): EncounterRewardConfig {
     const goldMin = Math.max(0, Math.floor(table.gold?.min ?? 0));
     const goldMax = Math.max(goldMin, Math.floor(table.gold?.max ?? table.gold?.min ?? 0));
@@ -783,10 +981,8 @@ export class SimulatorHarness {
 
     await this.initializeRuntime();
 
-    await Promise.all([
-      this.loadItemDefinitions(),
-      this.loadRecipes(),
-    ]);
+    this.seedDefinitionsFromRuntime();
+    this.refreshInventorySnapshot();
 
     this.populateHeroSelect();
     this.populateStageSelect();
@@ -803,62 +999,6 @@ export class SimulatorHarness {
     this.renderHistory();
     this.populateRecipeSelects();
     this.updateCraftingAvailability();
-  }
-
-  protected async loadItemDefinitions(): Promise<void> {
-    const map = new Map<string, ItemDefinition>();
-    try {
-      const response = await fetch(resolveDataUrl("assets/data/items/manifest.json"), {
-        cache: "no-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const manifest = (await response.json()) as {
-        items: Array<{ id: string; path: string }>;
-      };
-
-      for (const entry of manifest.items ?? []) {
-        try {
-          const resolvedPath = resolveDataUrl(entry.path);
-          const itemResponse = await fetch(resolveDataUrl(entry.path), {
-            cache: "no-cache",
-          });
-          if (!itemResponse.ok) {
-            throw new Error(`${itemResponse.status} ${itemResponse.statusText}`);
-          }
-          const data = (await itemResponse.json()) as ItemDefinition;
-          map.set(data.id, data);
-        } catch (err) {
-          console.warn(`[Harness] Failed to load item '${entry.id}'`, err);
-        }
-      }
-    } catch (err) {
-      console.warn("[Harness] Failed to load item manifest", err);
-    }
-
-    this.itemDefs = map;
-  }
-
-  protected async loadRecipes(): Promise<void> {
-    try {
-      const response = await fetch(resolveDataUrl("assets/data/crafting/recipes.json"), {
-        cache: "no-cache",
-      });
-      if (!response.ok) {
-        throw new Error(`${response.status} ${response.statusText}`);
-      }
-      const json = await response.json();
-      this.recipes = json.recipes ?? [];
-      this.recipeMap = new Map();
-      this.recipes.forEach((recipe) => {
-        this.recipeMap.set(recipe.id, recipe);
-      });
-    } catch (err) {
-      console.warn("[Harness] Failed to load crafting recipes", err);
-      this.recipes = [];
-      this.recipeMap = new Map();
-    }
   }
 
   protected async loadLootTables(): Promise<LootTableRecord[]> {
@@ -972,375 +1112,42 @@ export class SimulatorHarness {
   }
 
   protected resetEncounter(freshHero: boolean) {
-    if (!this.heroOptions.length) {
-      console.warn("[Harness] No hero options available");
+    if (!this.runtime) {
       return;
     }
 
-    if (!this.ensureHero(freshHero)) {
-      return;
-    }
+    this.stopAuto();
 
     if (freshHero) {
       this.history = [];
       this.historyCounter = 0;
       this.renderHistory();
-      this.materialsStock = {};
-      this.equippedItems = {
-        MainHand: null,
-        OffHand: null,
-        Head: null,
-        Chest: null,
-      };
-      this.consumables = {};
-      this.equipmentInventory = [];
       this.totalRewards = createEmptyRewards();
-      this.lastRewards = createEmptyRewards();
+      this.selectedEquipmentRecipeId = null;
+      this.selectedConsumableRecipeId = null;
+      this.selectedMaterialRecipeId = null;
+      this.runtime.setInventorySnapshot(null);
+      this.refreshInventorySnapshot();
     }
 
-    if (this.pendingSourceProgress && this.hero) {
-      this.hero.restoreProgress(this.pendingSourceProgress);
-      this.pendingSourceProgress = undefined;
-      this.applyEquippedItems();
-      this.renderStatsTable();
-    }
-
-    this.stageWaveCompleted = Math.max(0, Math.min(this.stageWaveCompleted, this.currentStage().waves - 1));
-    this.currentWaveQueue = [];
-    this.currentWaveNumber = 0;
-    this.currentStageName = this.currentStage().name;
-    this.currentEnemyLabel = "";
-    this.currentWaveIsBoss = false;
-
-    this.hero?.resetVitals();
-    this.enemy = null;
-    this.encounter = null;
-    this.running = false;
-    if (this.rafHandle !== null) {
-      cancelAnimationFrame(this.rafHandle);
-      this.rafHandle = null;
-    }
+    this.lastRewards = createEmptyRewards();
+    this.rewardClaimed = false;
+    this.lastSummary = null;
 
     this.telemetry.hero = createTelemetryBucket();
     this.telemetry.enemy = createTelemetryBucket();
     this.renderTelemetry();
+    this.renderRewards();
 
-    this.rewardClaimed = false;
-    this.resumeAfterVictory = false;
-    this.lastRewards = this.lastRewards ?? createEmptyRewards();
+    this.runtime.resetEncounter(this.autoStart, freshHero);
 
-    this.prepareNextWave();
-    this.syncInventoryView();
-    this.populateRecipeSelects();
-    this.startNextEncounter(freshHero);
-    this.persistState();
-    this.notifyControlState();
-  }
-
-  protected ensureHero(fresh: boolean): boolean {
-    const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id;
-    if (!heroId) {
-      console.warn("[Harness] No hero selected");
-      return false;
+    if (!freshHero) {
+      this.refreshInventorySnapshot();
     }
 
-    if (!fresh && this.hero && this.heroOptions.some((option) => option.id === heroId)) {
-      return true;
-    }
-
-    const preset = this.heroOptions.find((option) => option.id === heroId) ?? this.heroOptions[0];
-    this.selectedHeroId = preset?.id ?? null;
-    this.hero = new Character(this.cloneData(preset.data));
-    this.applyEquippedItems();
-    this.renderStatsTable();
-    return true;
-  }
-
-  protected currentStage(): StageDefinition {
-    if (!this.stages.length) {
-      this.stages = [
-        {
-          name: "Endless",
-          waves: 999,
-          composition: [{ small: 1 }, { small: 2 }],
-          finalBoss: { boss: 1 },
-        },
-      ];
-    }
-    if (this.stageIndex >= this.stages.length) {
-      this.stageIndex = this.stages.length - 1;
-    }
-    if (this.stageIndex < 0) {
-      this.stageIndex = 0;
-    }
-    return this.stages[this.stageIndex];
-  }
-
-  protected prepareNextWave(): boolean {
-    let stage = this.currentStage();
-
-    if (this.stageWaveCompleted >= stage.waves) {
-      if (this.stageIndex < this.stages.length - 1) {
-        this.stageIndex += 1;
-      }
-      this.stageWaveCompleted = 0;
-      stage = this.currentStage();
-    }
-
-    const compositionList = stage.composition && stage.composition.length ? stage.composition : [{ small: 1 }];
-    const waveIndex = this.stageWaveCompleted;
-    const isFinalWave = waveIndex === (stage.waves ?? compositionList.length) - 1;
-    const pattern = isFinalWave
-      ? stage.finalBoss ?? { boss: 1 }
-      : compositionList[waveIndex % compositionList.length];
-
-    const queue: EnemyUnit[] = [];
-    Object.entries(pattern).forEach(([tier, amount]) => {
-      const total = Math.max(0, Math.floor(amount));
-      for (let i = 0; i < total; i += 1) {
-        const unit = this.pickEnemyFromTier(tier);
-        if (unit) {
-          queue.push(unit);
-        }
-      }
-    });
-
-    if (!queue.length) {
-      const fallbackOrder = isFinalWave ? ["boss", "medium", "small"] : ["small", "medium", "boss"];
-      let fallback: EnemyUnit | null = null;
-      for (const tier of fallbackOrder) {
-        fallback = this.pickEnemyFromTier(tier);
-        if (fallback) {
-          break;
-        }
-      }
-      if (fallback) {
-        queue.push(fallback);
-      } else {
-        console.warn("[Harness] No enemies available for wave");
-        return false;
-      }
-    }
-
-    this.currentWaveQueue = queue;
-    this.currentWaveNumber = this.totalWavesCompleted + 1;
-    this.currentStageName = stage.name;
-    this.applyStageLoot(stage.lootTable);
-    this.currentWaveIsBoss = isFinalWave;
-    return true;
-  }
-
-  protected pickEnemyFromTier(tier: string): EnemyUnit | null {
-    const pool = this.enemyPools[tier] ?? [];
-    if (pool.length) {
-      const index = Math.floor(Math.random() * pool.length);
-      const source = pool[index];
-      return {
-        id: source.id,
-        label: source.label,
-        tier: source.tier,
-        data: this.cloneData(source.data),
-      };
-    }
-
-    const fallbacks = ["small", "medium", "boss"].filter((t) => t !== tier);
-    for (const fallbackTier of fallbacks) {
-      const fallbackPool = this.enemyPools[fallbackTier] ?? [];
-      if (fallbackPool.length) {
-        const index = Math.floor(Math.random() * fallbackPool.length);
-        const source = fallbackPool[index];
-        return {
-          id: source.id,
-          label: source.label,
-          tier: source.tier,
-          data: this.cloneData(source.data),
-        };
-      }
-    }
-
-    return null;
-  }
-
-  protected startNextEncounter(autoStart = false) {
-    if (!this.hero || !this.hero.isAlive) {
-      return;
-    }
-
-    if (!this.currentWaveQueue.length && !this.prepareNextWave()) {
-      return;
-    }
-
-    const unit = this.currentWaveQueue.shift();
-    if (!unit) {
-      return;
-    }
-
-    this.enemy = new Character(this.cloneData(unit.data));
-    this.enemy.resetVitals();
-    this.currentEnemyLabel = unit.label;
-
-    this.tryUseConsumables();
-
-    this.encounter = new EncounterLoop(this.sim, this.hero, this.enemy, {
-      tickInterval: this.tickIntervalSeconds,
-      rewardConfig: this.rewardConfig,
-    });
-
-    this.telemetry.hero = createTelemetryBucket();
-    this.telemetry.enemy = createTelemetryBucket();
-    this.renderTelemetry();
-
-    this.rewardClaimed = false;
-    this.resumeAfterVictory = autoStart;
-
-    console.log(
-      `[Encounter] ${this.currentStageName} — Wave ${this.currentWaveNumber} vs ${unit.label}`
-    );
-
-    if (autoStart) {
-      this.startAuto();
-    } else {
-      this.running = false;
-      this.updateCraftingAvailability();
-    }
-  }
-
-  protected handleHeroVictory() {
-    if (!this.hero) {
-      return;
-    }
-
-    const summary = this.encounter?.getSummary() ?? null;
-    this.recordHistoryEntry("Victory", summary);
-    this.renderHistory();
-
-    if (this.currentWaveQueue.length) {
-      const autoResume = this.running;
-      this.encounter = null;
-      this.startNextEncounter(autoResume);
-      if (!autoResume) {
-        this.updateCraftingAvailability();
-      }
-      this.persistState();
-      return;
-    }
-
-    const wasBossWave = this.currentWaveIsBoss;
-    const clearedStageName = this.currentStageName;
-    const clearedStageIndex = this.stageIndex;
-
-    this.completeWave();
-    const hasNext = this.prepareNextWave();
-
-    if (!hasNext) {
-      console.log("[Encounter] Stages exhausted.");
-      this.stopAuto();
-      this.encounter = null;
-      this.running = false;
-      this.syncInventoryView();
-      this.updateCraftingAvailability();
-      this.pushLog(`[Stage] ${clearedStageName} cleared. All stages complete.`);
-      this.persistState();
-      return;
-    }
-
-    if (wasBossWave) {
-      this.stopAuto();
-      this.encounter = null;
-      this.running = false;
-      this.syncInventoryView();
-      this.updateCraftingAvailability();
-      this.pushLog(
-        `[Stage] ${clearedStageName} cleared. Prepare for ${this.currentStageName}.`
-      );
-      this.persistState();
-      return;
-    }
-
-    const auto = this.running;
-    this.encounter = null;
-    this.startNextEncounter(auto);
-    if (!auto) {
-      this.syncInventoryView();
-      this.updateCraftingAvailability();
-      this.pushLog(
-        `[Stage] ${this.currentStageName} — wave ${this.currentWaveNumber} ready. Craft or press Start.`
-      );
-    }
-    this.persistState();
-  }
-
-  protected handleHeroDefeat() {
-    console.log("[Encounter] Hero defeated. Simulation halted.");
-    const summary = this.encounter?.getSummary() ?? null;
-    this.recordHistoryEntry("Defeat", summary);
-    this.renderHistory();
-    const bossWave = this.currentWaveIsBoss;
-
-    this.stopAuto();
-    this.encounter = null;
-    this.running = false;
-
-    if (this.hero) {
-      this.hero.resetVitals();
-      this.renderStatsTable();
-    }
-
-    if (bossWave) {
-      this.stageWaveCompleted = 0;
-      this.currentWaveQueue = [];
-      this.currentWaveNumber = 0;
-      this.currentEnemyLabel = "";
-      this.currentWaveIsBoss = false;
-      if (this.prepareNextWave()) {
-        this.pushLog(
-          `[Boss] ${this.currentStageName} boss repelled the hero. Clear earlier waves to regroup before the next attempt.`
-        );
-      } else {
-        console.warn("[Harness] Failed to reset stage after boss defeat.");
-      }
-    } else {
-      this.pushLog("[Encounter] Defeat. Adjust gear or craft before retrying.");
-    }
-
-    this.syncInventoryView();
     this.updateCraftingAvailability();
+    this.notifyControlState();
     this.persistState();
-  }
-
-  protected completeWave() {
-    this.stageWaveCompleted += 1;
-    this.totalWavesCompleted += 1;
-    this.currentWaveQueue = [];
-    this.currentWaveIsBoss = false;
-  }
-
-  protected applyStageLoot(lootId?: string) {
-    if (!lootId) {
-      return;
-    }
-    this.selectLootTable(lootId, { persist: false });
-  }
-
-  protected applyEquippedItems() {
-    if (!this.hero) {
-      return;
-    }
-
-    Object.entries(this.equippedItems).forEach(([slot, owned]) => {
-      if (!owned) {
-        return;
-      }
-      const def = this.itemDefs.get(owned.itemId);
-      if (!def) {
-        return;
-      }
-      const equipment = this.createEquipment(def, owned);
-      if (!equipment) {
-        return;
-      }
-      this.hero!.equipItem(equipment);
-    });
   }
 
   protected cloneOwnedEquipment(owned: OwnedEquipment): OwnedEquipment {
@@ -1403,15 +1210,6 @@ export class SimulatorHarness {
 
     clone.resetVitals();
     return clone;
-  }
-
-  protected rebuildHeroFromLoadout() {
-    const loadout = this.cloneLoadout();
-    const clone = this.createHeroClone(loadout);
-    if (!clone) {
-      return;
-    }
-    this.hero = clone;
   }
 
   protected createEquipment(def: ItemDefinition, owned?: OwnedEquipment | null): EquipmentItem | null {
@@ -1508,35 +1306,6 @@ export class SimulatorHarness {
     );
   }
 
-  protected consumeMaterials(cost: Record<string, number> = {}) {
-    Object.entries(cost).forEach(([id, qty]) => {
-      this.materialsStock[id] = Math.max(0, (this.materialsStock[id] ?? 0) - qty);
-    });
-    this.updateCraftingAvailability();
-  }
-
-  protected addMaterials(materials: Record<string, number> = {}) {
-    Object.entries(materials).forEach(([id, qty]) => {
-      this.materialsStock[id] = (this.materialsStock[id] ?? 0) + qty;
-    });
-    this.updateCraftingAvailability();
-  }
-
-  protected addEquipmentToInventory(owned: OwnedEquipment) {
-    this.equipmentInventory.push(owned);
-    this.updateCraftingAvailability();
-  }
-
-  protected removeEquipmentFromInventory(instanceId: string): OwnedEquipment | null {
-    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
-    if (index === -1) {
-      return null;
-    }
-    const [removed] = this.equipmentInventory.splice(index, 1);
-    this.updateCraftingAvailability();
-    return removed;
-  }
-
   protected createOwnedEquipmentInstance(itemId: string, rarity: ItemRarity = "common"): OwnedEquipment | null {
     const def = this.itemDefs.get(itemId);
     if (!def) {
@@ -1559,132 +1328,100 @@ export class SimulatorHarness {
   }
 
   protected craftEquipment(recipeId: string): boolean {
-    const recipe = this.recipeMap.get(recipeId);
-    if (!recipe || recipe.type !== "equipment") {
-      this.pushLog(`[Craft] Unknown equipment recipe '${recipeId}'.`);
+    if (!this.runtime) {
       return false;
     }
-    const def = this.itemDefs.get(recipe.result);
-    if (!def || !def.slot) {
-      this.pushLog(`[Craft] Missing definition for '${recipe.result}'.`);
-      return false;
+    const result = this.runtime.craftRecipe(recipeId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
     }
-    if (!this.hasMaterials(recipe.cost)) {
-      this.pushLog(`[Craft] Not enough materials for ${def.name}.`);
-      return false;
-    }
-    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
-    this.consumeMaterials(recipe.cost);
-    for (let index = 0; index < amount; index += 1) {
-      const owned = this.createOwnedEquipmentInstance(def.id, "common");
-      if (!owned) {
-        continue;
-      }
-      this.addEquipmentToInventory(owned);
-      const slotKey = def.slot as EquippedSlotKey;
-      if (!this.equippedItems[slotKey]) {
-        this.equipOwnedFromInventory(owned.instanceId);
-      }
-    }
-    this.pushLog(`[Craft] Forged ${def.name} x${amount}.`);
-    this.syncInventoryView();
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected craftConsumable(recipeId: string): boolean {
-    const recipe = this.recipeMap.get(recipeId);
-    if (!recipe || recipe.type !== "consumable") {
-      this.pushLog(`[Craft] Unknown consumable recipe '${recipeId}'.`);
+    if (!this.runtime) {
       return false;
     }
-    if (!this.hasMaterials(recipe.cost)) {
-      this.pushLog(`[Craft] Not enough materials for ${recipe.result}.`);
-      return false;
+    const result = this.runtime.craftRecipe(recipeId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
     }
-    const def = this.itemDefs.get(recipe.result);
-    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
-    this.consumeMaterials(recipe.cost);
-    this.consumables[recipe.result] = (this.consumables[recipe.result] ?? 0) + amount;
-    this.pushLog(`[Craft] Prepared ${def?.name ?? recipe.result} x${amount}.`);
-    this.syncInventoryView();
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected craftMaterial(recipeId: string): boolean {
-    const recipe = this.recipeMap.get(recipeId);
-    if (!recipe || recipe.type !== "material") {
-      this.pushLog(`[Craft] Unknown material recipe '${recipeId}'.`);
+    if (!this.runtime) {
       return false;
     }
-    const amount = Math.max(1, Math.floor(recipe.resultAmount ?? 1));
-    if (!this.hasMaterials(recipe.cost)) {
-      this.pushLog(`[Craft] Not enough materials to refine ${recipe.result}.`);
-      return false;
+    const result = this.runtime.craftRecipe(recipeId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
     }
-    this.consumeMaterials(recipe.cost);
-    this.materialsStock[recipe.result] = (this.materialsStock[recipe.result] ?? 0) + amount;
-    this.pushLog(`[Craft] Refined ${recipe.result} x${amount}.`);
-    this.syncInventoryView();
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected equipOwnedFromInventory(instanceId: string): boolean {
-    if (!this.hero) {
-      this.pushLog(`[Equip] No hero available.`);
-      this.updateCraftingAvailability();
+    this.pauseSimulation();
+    if (!this.runtime) {
       return false;
     }
 
-    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
-    if (index === -1) {
-      this.pushLog(`[Equip] Item not found in inventory.`);
+    const result = this.runtime.equipFromInventory(instanceId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
       this.updateCraftingAvailability();
-      return false;
     }
-
-    const owned = this.equipmentInventory[index];
-    const def = this.itemDefs.get(owned.itemId);
-    if (!def || !def.slot) {
-      this.pushLog(`[Equip] Unknown equipment '${owned.itemId}'.`);
-      this.updateCraftingAvailability();
-      return false;
-    }
-
-    const equipment = this.createEquipment(def, owned);
-    if (!equipment) {
-      this.pushLog(`[Equip] Cannot equip ${def.name}.`);
-      this.updateCraftingAvailability();
-      return false;
-    }
-
-    const slotKey = def.slot as EquippedSlotKey;
-    const previousOwned = this.equippedItems[slotKey] ?? null;
-    this.hero.equipItem(equipment);
-
-    this.equipmentInventory.splice(index, 1);
-    if (previousOwned) {
-      this.equipmentInventory.push(previousOwned);
-    }
-    this.equippedItems[slotKey] = owned;
-    this.pushLog(`[Equip] ${def.name} (${owned.rarity}) equipped.`);
-    this.renderStatsTable();
-    this.syncInventoryView();
     this.persistState();
-    this.updateCraftingAvailability();
-    return true;
+    return result.success;
   }
 
   protected equipFirstMatchingItem(itemId: string): boolean {
-    const owned = this.equipmentInventory.find((item) => item.itemId === itemId);
-    if (!owned) {
-      this.pushLog(`[Equip] ${itemId} not found in inventory.`);
-      this.updateCraftingAvailability();
+    if (!this.runtime) {
       return false;
     }
-    return this.equipOwnedFromInventory(owned.instanceId);
+    const result = this.runtime.equipFirstMatching(itemId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
+    }
+    this.persistState();
+    return result.success;
   }
 
   protected mergeEquipmentRewards(target: RewardEquipmentItem[], source: RewardEquipmentItem[] = []) {
@@ -1706,23 +1443,6 @@ export class SimulatorHarness {
       } else {
         target.push({ augmentId: entry.augmentId, quantity: entry.quantity });
       }
-    });
-  }
-
-  protected grantEquipmentRewards(list: RewardEquipmentItem[] = []) {
-    list.forEach((entry) => {
-      for (let index = 0; index < entry.quantity; index += 1) {
-        const owned = this.createOwnedEquipmentInstance(entry.itemId, entry.rarity);
-        if (owned) {
-          this.addEquipmentToInventory(owned);
-        }
-      }
-    });
-  }
-
-  protected grantAugmentRewards(list: RewardAugmentItem[] = []) {
-    list.forEach((entry) => {
-      this.consumables[entry.augmentId] = (this.consumables[entry.augmentId] ?? 0) + entry.quantity;
     });
   }
 
@@ -1751,35 +1471,10 @@ export class SimulatorHarness {
   }
 
   protected getUpgradeMaterials(def: ItemDefinition | undefined, owned: OwnedEquipment): Record<string, number> | null {
-    if (!def || (def.type !== "weapon" && def.type !== "armor")) {
+    if (!this.runtime) {
       return null;
     }
-    if (owned.upgradeLevel >= owned.maxUpgradeLevel) {
-      return null;
-    }
-    if (def.upgrades && def.upgrades.length) {
-      const tierIndex = Math.min(owned.upgradeLevel, def.upgrades.length - 1);
-      const tier = def.upgrades[tierIndex];
-      if (!tier || !tier.materials) {
-        return null;
-      }
-      const normalized = Object.entries(tier.materials).reduce<Record<string, number>>((acc, [id, amount]) => {
-        const value = Math.max(1, Math.floor(Number(amount) || 0));
-        if (value > 0) {
-          acc[id] = value;
-        }
-        return acc;
-      }, {});
-      if (!Object.keys(normalized).length) {
-        return null;
-      }
-      return normalized;
-    }
-    const materialId = def.type === "weapon" ? "weapon-essence" : "armor-essence";
-    const base = def.type === "weapon" ? 2 : 2;
-    const scale = def.type === "weapon" ? 2 : 3;
-    const amount = base + owned.upgradeLevel * scale;
-    return { [materialId]: amount };
+    return this.runtime.getUpgradeCostForInstance(owned.instanceId);
   }
 
   protected canUpgradeEquipment(owned: OwnedEquipment): boolean {
@@ -1861,66 +1556,32 @@ export class SimulatorHarness {
   }
 
   protected upgradeEquipment(instanceId: string): boolean {
-    const owned = this.getOwnedEquipment(instanceId);
-    if (!owned) {
-      this.pushLog(`[Upgrade] Item not found.`);
+    if (!this.runtime) {
       return false;
     }
-    const def = this.itemDefs.get(owned.itemId);
-    const materials = this.getUpgradeMaterials(def, owned);
-    if (!def || !materials) {
-      this.pushLog(`[Upgrade] ${owned.itemId} cannot be upgraded further.`);
-      return false;
-    }
-    const missing = Object.entries(materials).filter(
-      ([id, amount]) => (this.materialsStock[id] ?? 0) < amount
-    );
-    if (missing.length) {
-      const parts = missing
-        .map(([id, amount]) => `${id} x${amount} (have ${this.materialsStock[id] ?? 0})`)
-        .join(", ");
-      this.pushLog(`[Upgrade] Need ${parts}.`);
+    const result = this.runtime.upgradeOwnedEquipment(instanceId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
       this.updateCraftingAvailability();
-      this.syncInventoryView();
-      return false;
     }
-
-    Object.entries(materials).forEach(([id, amount]) => {
-      this.materialsStock[id] = (this.materialsStock[id] ?? 0) - amount;
-    });
-    owned.upgradeLevel = Math.min(owned.maxUpgradeLevel, owned.upgradeLevel + 1);
-
-    const slot = this.findEquippedSlot(instanceId);
-    if (slot) {
-      this.rebuildHeroFromLoadout();
-      this.renderStatsTable();
-      this.refreshStatus(true);
-    }
-
-    const parts = Object.entries(materials)
-      .map(([id, amount]) => `${id} x${amount}`)
-      .join(", ");
-    this.pushLog(
-      `[Upgrade] ${def?.name ?? owned.itemId} -> +${owned.upgradeLevel} (spent ${parts}).`
-    );
-    this.syncInventoryView();
-    this.updateCraftingAvailability();
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected getSalvageResult(def: ItemDefinition | undefined, owned: OwnedEquipment): {
     materialId: string;
     amount: number;
   } | null {
-    if (!def || (def.type !== "weapon" && def.type !== "armor")) {
+    if (!this.runtime) {
       return null;
     }
-    const materialId = def.type === "weapon" ? "weapon-essence" : "armor-essence";
-    const base = SALVAGE_VALUE_BY_RARITY[owned.rarity] ?? 1;
-    const bonus = owned.upgradeLevel;
-    const amount = Math.max(1, base + bonus);
-    return { materialId, amount };
+    return this.runtime.getSalvageResultForInstance(owned.instanceId);
   }
 
   protected describeSalvage(def: ItemDefinition | undefined, owned: OwnedEquipment): {
@@ -1948,31 +1609,22 @@ export class SimulatorHarness {
   }
 
   protected salvageEquipment(instanceId: string): boolean {
-    const index = this.equipmentInventory.findIndex((item) => item.instanceId === instanceId);
-    if (index === -1) {
-      this.pushLog(`[Salvage] Item must be unequipped before salvaging.`);
+    if (!this.runtime) {
       return false;
     }
-
-    const owned = this.equipmentInventory[index];
-    const def = this.itemDefs.get(owned.itemId);
-    const result = this.getSalvageResult(def, owned);
-    if (!result) {
-      this.pushLog(`[Salvage] ${owned.itemId} cannot be salvaged.`);
-      return false;
+    const result = this.runtime.salvageOwnedEquipment(instanceId);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
     }
-
-    this.equipmentInventory.splice(index, 1);
-    this.materialsStock[result.materialId] =
-      (this.materialsStock[result.materialId] ?? 0) + result.amount;
-
-    this.pushLog(
-      `[Salvage] ${def?.name ?? owned.itemId} dismantled for ${result.materialId} x${result.amount}.`
-    );
-    this.syncInventoryView();
-    this.updateCraftingAvailability();
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected getAvailableAugmentIds(): string[] {
@@ -1998,14 +1650,8 @@ export class SimulatorHarness {
       this.pushLog(`[Augment] Item not found.`);
       return false;
     }
-    if (owned.socketSlots <= 0) {
-      this.pushLog(`[Augment] ${owned.itemId} has no sockets.`);
-      return false;
-    }
-    if (owned.augments.length >= owned.socketSlots) {
-      this.pushLog(`[Augment] All sockets are filled.`);
-      return false;
-    }
+
+    this.pauseSimulation();
     const available = this.getAvailableAugmentIds();
     if (!available.length) {
       this.pushLog(`[Augment] No augments available.`);
@@ -2028,51 +1674,36 @@ export class SimulatorHarness {
       }
       chosen = trimmed;
     }
-
-    this.consumables[chosen] = Math.max(0, (this.consumables[chosen] ?? 0) - 1);
-    owned.augments.push(chosen);
-
-    const def = this.itemDefs.get(owned.itemId);
-    const slot = this.findEquippedSlot(instanceId);
-    if (slot && this.hero && def) {
-      const equipment = this.createEquipment(def, owned);
-      if (equipment) {
-        this.hero.equipItem(equipment);
-        this.renderStatsTable();
-      }
+    if (!this.runtime) {
+      return false;
     }
-
-    const augmentName = this.itemDefs.get(chosen)?.name ?? chosen;
-    this.pushLog(`[Augment] ${def?.name ?? owned.itemId} gains ${augmentName}.`);
-    this.syncInventoryView();
-    this.updateCraftingAvailability();
+    const result = this.runtime.socketOwnedEquipment(instanceId, chosen);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
+    }
     this.persistState();
-    return true;
+    return result.success;
   }
 
   protected useConsumable(consumableId: string): boolean {
-    if (!this.hero) {
+    if (!this.runtime) {
       return false;
     }
-    if ((this.consumables[consumableId] ?? 0) <= 0) {
-      this.pushLog(`[Consumable] ${consumableId} not available.`);
-      return false;
+    const result = this.runtime.useConsumableItem(consumableId);
+    if (result.success || result.consumablesChanged) {
+      this.refreshInventorySnapshot();
+      this.persistState();
+      return result.success;
     }
-    const def = this.itemDefs.get(consumableId);
-    if (!def || !def.effect || def.effect.kind !== "heal") {
-      this.pushLog(`[Consumable] ${consumableId} cannot be used.`);
-      return false;
-    }
-    this.consumables[consumableId] = Math.max(0, (this.consumables[consumableId] ?? 0) - 1);
-    this.hero.healPercent(def.effect.percent ?? 0.5);
-    this.pushLog(
-      `[Consumable] Hero uses ${def.name ?? consumableId} (+${Math.round((def.effect.percent ?? 0.5) * 100)}% HP)`
-    );
-    this.renderStatsTable();
-    this.syncInventoryView();
-    this.persistState();
     this.updateCraftingAvailability();
-    return true;
+    return result.success;
   }
 
   protected recordHistoryEntry(
@@ -2132,7 +1763,10 @@ export class SimulatorHarness {
     this.useConsumable(potionId);
   }
 
-  protected selectLootTable(id: string | null, options: { persist?: boolean } = {}) {
+  protected selectLootTable(
+    id: string | null,
+    options: { persist?: boolean; notifyRuntime?: boolean } = {}
+  ) {
     if (!id) {
       if (!options.persist) {
         return;
@@ -2144,6 +1778,9 @@ export class SimulatorHarness {
         augmentDrops: [],
         materialDrops: [],
       };
+      if (options.notifyRuntime) {
+        this.runtime?.setLootTableId(null);
+      }
       this.persistState();
       return;
     }
@@ -2170,6 +1807,10 @@ export class SimulatorHarness {
         : [],
     };
 
+    if (options.notifyRuntime) {
+      this.runtime?.setLootTableId(record.id);
+    }
+
     if (options.persist !== false) {
       this.persistState();
     }
@@ -2178,112 +1819,39 @@ export class SimulatorHarness {
   }
 
   protected startAuto() {
-    if (!this.encounter) {
+    if (!this.runtime) {
       return;
     }
-    this.encounter.setTickInterval(this.tickIntervalSeconds);
-    this.encounter.start();
+    this.runtime.setTickInterval(this.tickIntervalSeconds);
+    this.runtime.startAuto();
     this.running = true;
-    this.lastTimestamp = performance.now();
-    if (this.rafHandle === null) {
-      this.rafHandle = requestAnimationFrame(this.onFrame);
-    }
+    this.ensureAnimationLoop();
     this.notifyControlState();
     this.refreshStatus();
   }
 
   protected stopAuto() {
-    this.encounter?.stop();
+    this.runtime?.stopAuto();
     this.running = false;
-    if (this.rafHandle !== null) {
-      cancelAnimationFrame(this.rafHandle);
-      this.rafHandle = null;
-    }
+    this.stopAnimationLoop();
     this.notifyControlState();
     this.refreshStatus();
   }
 
   protected onFrame = (time: number) => {
-    if (!this.encounter || !this.running) {
-      this.rafHandle = null;
+    if (!this.runtime || !this.runtimeState?.running) {
+      this.stopAnimationLoop();
       return;
     }
 
     const delta = (time - this.lastTimestamp) / 1000;
     this.lastTimestamp = time;
-
-    const events = this.encounter.tick(delta);
-    if (events.length) {
-      events.forEach((event: EncounterEvent) => {
-        const role = event.attacker === this.hero ? "hero" : "enemy";
-        const bucket = this.telemetry[role];
-        bucket.attempts += 1;
-        switch (event.result) {
-          case "hit":
-            bucket.hits += 1;
-            bucket.totalDamage += Math.max(0, event.damage);
-            if (event.critical) {
-              bucket.crits += 1;
-            }
-            break;
-          case "miss":
-            bucket.misses += 1;
-            break;
-          case "dodge":
-            bucket.dodges += 1;
-            break;
-          case "parry":
-            bucket.parries += 1;
-            break;
-        }
-
-        const attackerLabel = event.attacker === this.hero ? "Hero" : "Enemy";
-        const defenderLabel = event.defender === this.hero ? "Hero" : "Enemy";
-        const stamp = event.timestamp.toFixed(2);
-        const hand = event.hand === "main" ? "main" : "off";
-        switch (event.result) {
-          case "miss":
-            this.pushLog(`[${stamp}s][${hand}] ${attackerLabel} swings at ${defenderLabel} and misses.`);
-            break;
-          case "dodge":
-            this.pushLog(`[${stamp}s][${hand}] ${defenderLabel} dodges ${attackerLabel}.`);
-            break;
-          case "parry":
-            this.pushLog(`[${stamp}s][${hand}] ${defenderLabel} parries ${attackerLabel}.`);
-            break;
-          case "hit":
-          default: {
-            const dmg = Math.round(event.damage);
-            const crit = event.critical ? " CRIT!" : "";
-            this.pushLog(`[${stamp}s][${hand}] ${attackerLabel} hits ${defenderLabel} for ${dmg}.${crit}`);
-            break;
-          }
-        }
-      });
-      this.renderTelemetry();
-    }
-
-    const summary = this.encounter.getSummary();
-    this.refreshStatus();
-
-    if (summary.victor === "source") {
-      this.handleHeroVictory();
-    } else if (summary.victor === "target") {
-      this.handleHeroDefeat();
-      return;
-    }
-
-    this.claimRewardsIfReady(summary);
-
-    if (!this.running) {
-      this.rafHandle = null;
-      return;
-    }
+    this.runtime.tick(delta);
 
     this.rafHandle = requestAnimationFrame(this.onFrame);
   };
 
-  protected claimRewardsIfReady(summary: EncounterSummary) {
+  protected applyRewards(summary: EncounterSummary) {
     if (this.rewardClaimed || summary.victor !== "source") {
       return;
     }
@@ -2300,9 +1868,8 @@ export class SimulatorHarness {
     this.mergeEquipmentRewards(this.totalRewards.equipment, rewards.equipment);
     this.mergeAugmentRewards(this.totalRewards.augments, rewards.augments);
 
-    this.addMaterials(rewards.materials ?? {});
-    this.grantEquipmentRewards(rewards.equipment);
-    this.grantAugmentRewards(rewards.augments);
+    this.runtime?.grantEncounterRewards(rewards);
+    this.refreshInventorySnapshot();
 
     if (rewards.equipment && rewards.equipment.length) {
       this.pushLog(`[Loot] Equipment: ${this.formatEquipmentList(rewards.equipment)}`);
@@ -2321,19 +1888,18 @@ export class SimulatorHarness {
 
     this.rewardClaimed = true;
     this.renderRewards();
-    this.syncInventoryView();
     this.persistState();
   }
 
   protected refreshStatus(force = false) {
-    const summary = this.encounter?.getSummary() ?? null;
-    const runningState = this.encounter?.isRunning ?? false;
+    const runningState = this.runtimeState?.running ?? false;
+    const statusLabel = this.runtimeState
+      ? runningState
+        ? "Running"
+        : "Paused"
+      : "Idle";
 
-    const statusLabel = !this.encounter
-      ? "Idle"
-      : runningState
-      ? "Running"
-      : "Paused";
+    const summary = this.lastSummary;
 
     const payload: StatusPayload = {
       label: `${statusLabel} • tick ${this.tickIntervalSeconds.toFixed(2)}s`,
@@ -2499,33 +2065,38 @@ export class SimulatorHarness {
     }
 
     try {
-      const equippedSnapshot: Record<string, OwnedEquipment | null> = {
-        MainHand: null,
-        OffHand: null,
-        Head: null,
-        Chest: null,
-      };
-      (Object.keys(equippedSnapshot) as EquippedSlotKey[]).forEach((slot) => {
-        const owned = this.equippedItems[slot];
-        equippedSnapshot[slot] = owned
-          ? { ...owned, augments: [...owned.augments] }
-          : null;
-      });
+      const runtimeSnapshot = this.runtime ? this.runtime.getInventorySnapshot() : null;
+      if (runtimeSnapshot) {
+        this.inventorySnapshot = {
+          equipped: { ...(runtimeSnapshot.equipped ?? {}) },
+          inventory: runtimeSnapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [],
+          materials: { ...(runtimeSnapshot.materials ?? {}) },
+          consumables: { ...(runtimeSnapshot.consumables ?? {}) },
+        };
+      }
 
-      const inventorySnapshot = this.equipmentInventory.map((item) => ({
-        ...item,
-        augments: [...item.augments],
-      }));
+      const snapshot = this.inventorySnapshot ?? {
+        equipped: {},
+        inventory: [],
+        materials: {},
+        consumables: {},
+      };
+
+      const equippedSnapshot: Record<string, OwnedEquipment | null> = {};
+      Object.entries(snapshot.equipped ?? {}).forEach(([slot, owned]) => {
+        equippedSnapshot[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
+      });
 
       const legacyEquipped: Record<string, string | null> = {};
-      (Object.keys(equippedSnapshot) as EquippedSlotKey[]).forEach((slot) => {
-        legacyEquipped[slot] = equippedSnapshot[slot]?.itemId ?? null;
+      Object.entries(equippedSnapshot).forEach(([slot, owned]) => {
+        legacyEquipped[slot] = owned ? owned.itemId : null;
       });
 
-      const legacyInventory: Record<string, number> = {};
-      this.equipmentInventory.forEach((item) => {
-        legacyInventory[item.itemId] = (legacyInventory[item.itemId] ?? 0) + 1;
-      });
+      const inventorySnapshot = snapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [];
+      const legacyInventory = inventorySnapshot.reduce<Record<string, number>>((map, item) => {
+        map[item.itemId] = (map[item.itemId] ?? 0) + 1;
+        return map;
+      }, {});
 
       const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id;
 
@@ -2533,7 +2104,6 @@ export class SimulatorHarness {
         version: 1,
         heroId: heroId ?? this.heroOptions[0]?.id,
         stageIndex: this.stageIndex,
-        stageWaveCompleted: this.stageWaveCompleted,
         totalWavesCompleted: this.totalWavesCompleted,
         tickInterval: this.tickIntervalSeconds,
         lootTableId: this.selectedLootId ?? undefined,
@@ -2542,12 +2112,13 @@ export class SimulatorHarness {
         heroProgress: this.hero.serializeProgress(),
         history: this.history.slice(-40),
         historyCounter: this.historyCounter,
-        materialsStock: this.materialsStock,
+        materialsStock: { ...snapshot.materials },
         equippedItems: legacyEquipped,
-        consumables: this.consumables,
+        consumables: { ...snapshot.consumables },
         equipmentInventory: legacyInventory,
         equippedItemsV2: equippedSnapshot,
         equipmentInventoryV2: inventorySnapshot,
+        inventorySnapshot: snapshot,
         timestamp: Date.now(),
       };
 
@@ -2569,17 +2140,21 @@ export class SimulatorHarness {
       }
       if (this.heroOptions.some((option) => option.id === state.heroId)) {
         this.selectedHeroId = state.heroId;
+        this.runtime?.setHero(state.heroId, false);
       }
 
       this.selectedLootId = state.lootTableId ?? null;
       if (state.lootTableId) {
-        this.selectLootTable(state.lootTableId, { persist: false });
+        this.selectLootTable(state.lootTableId, { persist: false, notifyRuntime: true });
+      } else {
+        this.selectLootTable(null, { persist: false, notifyRuntime: true });
       }
 
       this.stageIndex = Math.max(0, Math.min(state.stageIndex ?? 0, this.stages.length - 1));
-      this.stageWaveCompleted = Math.max(0, state.stageWaveCompleted ?? 0);
+      this.runtime?.setStageIndex(this.stageIndex);
       this.totalWavesCompleted = Math.max(0, state.totalWavesCompleted ?? 0);
       this.tickIntervalSeconds = Math.max(0.01, state.tickInterval ?? 0.1);
+      this.runtime?.setTickInterval(this.tickIntervalSeconds);
       this.totalRewards = normalizeRewards(state.rewards);
       this.lastRewards = normalizeRewards(state.lastRewards);
 
@@ -2592,56 +2167,13 @@ export class SimulatorHarness {
       this.history = state.history ? state.history.slice(-40) : [];
       this.historyCounter = state.historyCounter ?? this.history.length;
       this.renderHistory();
-      this.materialsStock = { ...(state.materialsStock ?? {}) };
-
-      const equippedDefaults: Record<EquippedSlotKey, OwnedEquipment | null> = {
-        MainHand: null,
-        OffHand: null,
-        Head: null,
-        Chest: null,
-      };
-
-      if (state.equippedItemsV2) {
-        Object.entries(state.equippedItemsV2).forEach(([slot, value]) => {
-          if (slot in equippedDefaults) {
-            equippedDefaults[slot as EquippedSlotKey] = value
-              ? { ...value, augments: [...value.augments] }
-              : null;
-          }
-        });
-      } else if (state.equippedItems) {
-        Object.entries(state.equippedItems).forEach(([slot, itemId]) => {
-          if (!itemId || !(slot in equippedDefaults)) {
-            return;
-          }
-          const owned = this.createOwnedEquipmentInstance(itemId, "common");
-          if (owned) {
-            equippedDefaults[slot as EquippedSlotKey] = owned;
-          }
-        });
+      const snapshot = state.inventorySnapshot ?? this.buildSnapshotFromLegacyState(state);
+      if (this.runtime) {
+        this.runtime.setInventorySnapshot(snapshot);
       }
-      this.equippedItems = equippedDefaults;
-
-      this.consumables = { ...(state.consumables ?? {}) };
-
-      if (state.equipmentInventoryV2) {
-        this.equipmentInventory = state.equipmentInventoryV2.map((item) => ({
-          ...item,
-          augments: [...item.augments],
-        }));
-      } else if (state.equipmentInventory) {
-        this.equipmentInventory = [];
-        Object.entries(state.equipmentInventory).forEach(([itemId, qty]) => {
-          for (let index = 0; index < qty; index += 1) {
-            const owned = this.createOwnedEquipmentInstance(itemId, "common");
-            if (owned) {
-              this.equipmentInventory.push(owned);
-            }
-          }
-        });
-      } else {
-        this.equipmentInventory = [];
-      }
+      this.inventorySnapshot = snapshot;
+      this.applyInventorySnapshot(snapshot);
+      this.syncInventoryView();
       return true;
     } catch (err) {
       console.warn("[Harness] Failed to restore state", err);
@@ -2737,12 +2269,8 @@ export class SimulatorHarness {
   }
 
   startSimulation() {
-    if (!this.encounter) {
-      if (this.currentWaveQueue.length) {
-        this.startNextEncounter(false);
-      } else {
-        this.resetEncounter(false);
-      }
+    if (!this.runtimeState) {
+      this.resetEncounter(false);
     }
     this.startAuto();
   }
@@ -2758,7 +2286,7 @@ export class SimulatorHarness {
   updateTickInterval(value: number) {
     const next = Math.max(0.01, Number.isFinite(value) ? value : this.tickIntervalSeconds);
     this.tickIntervalSeconds = next;
-    this.encounter?.setTickInterval(next);
+    this.runtime?.setTickInterval(next);
     this.persistState();
     this.refreshStatus(true);
     this.notifyControlState();
@@ -2775,19 +2303,19 @@ export class SimulatorHarness {
       return;
     }
     this.selectedHeroId = heroId;
+    this.runtime?.setHero(heroId, true);
     this.resetEncounter(true);
   }
 
   selectStage(index: number) {
     const clamped = Math.max(0, Math.min(index, this.stages.length - 1));
     this.stageIndex = clamped;
-    this.stageWaveCompleted = 0;
-    this.totalWavesCompleted = 0;
+    this.runtime?.setStageIndex(clamped);
     this.resetEncounter(false);
   }
 
   selectLoot(id: string | null) {
-    this.selectLootTable(id, { persist: true });
+    this.selectLootTable(id, { persist: true, notifyRuntime: true });
     this.resetEncounter(false);
   }
 
@@ -2800,24 +2328,14 @@ export class SimulatorHarness {
     const definition = this.itemDefs.get(owned.itemId);
 
     this.pauseSimulation();
-    this.encounter = null;
-    this.currentWaveQueue = [];
-    this.currentEnemyLabel = "";
-    this.currentWaveNumber = 0;
-
     this.equippedItems[slot] = null;
     this.equipmentInventory.push({ ...owned, augments: [...owned.augments] });
 
-    this.rebuildHeroFromLoadout();
-
-    this.telemetry.hero = createTelemetryBucket();
-    this.telemetry.enemy = createTelemetryBucket();
-    this.renderTelemetry();
-    this.renderStatsTable();
-    this.refreshStatus(true);
     this.syncInventoryView();
     this.updateCraftingAvailability();
     this.persistState();
+
+    this.resetEncounter(false);
 
     this.pushLog(`[Equip] ${definition?.name ?? owned.itemId} unequipped.`);
     return true;

@@ -6,11 +6,13 @@
   },
   "scripts": {
     "build:web": "cd web && vite build",
-    "serve:web": "cd web && vite dev --host --port 4321"
+    "serve:web": "cd web && vite dev --host --port 4321",
+    "validate:data": "node tools/validate-data.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/react": "^18.3.8",

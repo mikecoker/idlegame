@@ -5,6 +5,7 @@ import {
   HeroDefinition,
 } from "../../core/data/DataSource";
 import { LootTableConfig } from "../../core/economy/LootTable";
+import { CraftingRecipe, ItemDefinition } from "../../core/items/ItemDefinition";
 import {
   EnemyUnit,
   ProgressionData,
@@ -93,6 +94,14 @@ export class CocosDataSource implements GameDataSource {
       tables.push(table);
     });
     return tables;
+  }
+
+  async loadItemDefinitions(): Promise<ItemDefinition[]> {
+    return [];
+  }
+
+  async loadCraftingRecipes(): Promise<CraftingRecipe[]> {
+    return [];
   }
 
   protected cloneCharacter(asset: JsonAsset | null): CharacterData | null {

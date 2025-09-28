@@ -1,4 +1,4 @@
-import type { EncounterRewards } from "../../assets/game/encounter";
+import type { EncounterRewards } from "@core/combat/Encounter";
 import type { ItemDefinition, OwnedEquipment } from "../legacyHarness";
 
 export function titleCase(value: string): string {
