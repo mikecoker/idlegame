@@ -269,6 +269,32 @@ const App = () => {
     ];
   }, [rewards]);
 
+  const stagePreview: RewardPreview | null = useMemo(() => {
+    const preview = harnessRef.current?.getStagePreview();
+    if (!preview) {
+      return null;
+    }
+    return {
+      stageNumber: preview.stageNumber,
+      stageName: preview.name,
+      waveCount: preview.waveCount,
+      lootTableId: preview.lootTableId,
+      enemyGold: preview.rewards.enemyGold,
+      enemyXp: preview.rewards.enemyXp,
+      bossGold: preview.rewards.bossGold,
+      bossShards: preview.rewards.bossShards,
+      bossGemChance: preview.rewards.bossGemChance,
+      firstClearBonusPercent: preview.rewards.firstClearBonusPercent,
+      bossTimerSeconds: preview.bossConfig.timerSeconds,
+      enrageThresholdPercent: preview.bossConfig.enrageHpPercent,
+      enrageMultiplier: preview.bossConfig.enrageAttackMultiplier,
+    };
+  }, [status?.stage, controls?.selectedStageIndex]);
+
+  const permanentBonusPercent = useMemo(() => {
+    return harnessRef.current?.getPermanentBonusPercent() ?? 0;
+  }, [status?.stage, rewards, controls?.selectedStageIndex]);
+
   return (
     <div className="app-shell">
       <ControlBar
@@ -316,7 +342,11 @@ const App = () => {
 
       {activeTab === "dungeon" ? (
         <main className="content-grid">
-          <RewardsPanel rows={rewardRows} />
+          <RewardsPanel
+            rows={rewardRows}
+            preview={stagePreview}
+            permanentBonusPercent={permanentBonusPercent}
+          />
           <TelemetryPanel rows={telemetryRows} />
           <HistoryPanel history={history} />
           <LogPanel logs={logs} />

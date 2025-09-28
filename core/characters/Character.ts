@@ -70,6 +70,7 @@ export class Character {
 
   protected _equipment: EquipmentItem[] = [];
   protected _derivedStats: DerivedStats;
+  protected _progressionMultiplierApplied = 1;
 
   protected _curHealth: number = 1;
   public get health(): number {
@@ -117,6 +118,55 @@ export class Character {
       return 1;
     }
     return Math.min(1, this._experience / this._experienceToNext);
+  }
+
+  public applyGlobalStatBonus(multiplier: number) {
+    if (!Number.isFinite(multiplier) || multiplier <= 0) {
+      return;
+    }
+    const delta = multiplier - 1;
+    if (Math.abs(delta) < 1e-4) {
+      return;
+    }
+    const bonus: Partial<StatBlockData> = {
+      strength: this._baseStats.strength * delta,
+      agility: this._baseStats.agility * delta,
+      dexterity: this._baseStats.dexterity * delta,
+      stamina: this._baseStats.stamina * delta,
+      intelligence: this._baseStats.intelligence * delta,
+      wisdom: this._baseStats.wisdom * delta,
+      charisma: this._baseStats.charisma * delta,
+      defense: this._baseStats.defense * delta,
+    };
+    this._buffBonuses.applyDelta(bonus);
+
+    this._derivedStatsBlock.baseHitpoints *= multiplier;
+    this._derivedStatsBlock.baseMana *= multiplier;
+    this._derivedStatsBlock.attackPerStr *= multiplier;
+    this._derivedStatsBlock.accPerStr *= multiplier;
+    this._derivedStatsBlock.evaPerAgi *= multiplier;
+    this._derivedStatsBlock.dexPerCrit *= multiplier;
+    this._derivedStatsBlock.acPerDef *= multiplier;
+    this._derivedStatsBlock.hpPerStamina *= multiplier;
+    this._derivedStatsBlock.manaPerIntOrWis *= multiplier;
+
+    this.updateStats();
+    this._progressionMultiplierApplied *= multiplier;
+  }
+
+  public applyAttackMultiplier(multiplier: number) {
+    if (!Number.isFinite(multiplier) || multiplier <= 0) {
+      return;
+    }
+    const delta = multiplier - 1;
+    if (Math.abs(delta) < 1e-4) {
+      return;
+    }
+    const baseStrength = this._baseStats.strength + this._itemBonuses.strength;
+    this._buffBonuses.applyDelta({ strength: baseStrength * delta });
+    this._derivedStatsBlock.attackPerStr *= multiplier;
+    this._derivedStatsBlock.accPerStr *= Math.max(1, multiplier);
+    this.updateStats();
   }
 
   public get defense(): number {

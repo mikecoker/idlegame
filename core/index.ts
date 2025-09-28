@@ -17,6 +17,8 @@ export * from "./stats/StatBlock";
 export * from "./progression/Stage";
 export * from "./progression/ProgressionConfig";
 export { StageGenerator } from "./progression/StageGenerator";
+export type { StagePreview } from "./progression/StageGenerator";
+export type { ProgressionSnapshot } from "./runtime/SimulationRuntime";
 export * from "./economy/LootTable";
 export * from "./data/DataSource";
 export { SimulationRuntime } from "./runtime/SimulationRuntime";

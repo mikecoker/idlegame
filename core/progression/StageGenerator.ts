@@ -20,12 +20,22 @@ export interface StageRewardsSummary {
   bossGold: number;
   bossShards: number;
   bossGemChance: number;
+  firstClearBonusPercent: number;
 }
 
 export interface BossEncounterConfig {
   timerSeconds: number;
   enrageHpPercent: number;
   enrageAttackMultiplier: number;
+}
+
+export interface StagePreview {
+  stageNumber: number;
+  name: string;
+  waveCount: number;
+  lootTableId: string | null;
+  rewards: StageRewardsSummary;
+  bossConfig: BossEncounterConfig;
 }
 
 export interface StageBlueprint {
@@ -229,12 +239,14 @@ export class StageGenerator {
 
   protected buildRewardSummary(stageNumber: number): StageRewardsSummary {
     const rewards = this.config.rewards;
+    const firstClear = this.config.firstClearBonusPercent ?? 0.05;
     return {
       enemyGold: this.evaluateFormula(rewards.enemy.gold, stageNumber),
       enemyXp: this.evaluateFormula(rewards.enemy.xp, stageNumber),
       bossGold: this.evaluateFormula(rewards.boss.gold, stageNumber),
       bossShards: this.evaluateFormula(rewards.boss.shards, stageNumber),
-      bossGemChance: this.evaluateFormula(rewards.boss.gemChance, stageNumber),
+      bossGemChance: Math.min(1, this.evaluateFormula(rewards.boss.gemChance, stageNumber)),
+      firstClearBonusPercent: firstClear,
     };
   }
 

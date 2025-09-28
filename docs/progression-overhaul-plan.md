@@ -61,13 +61,13 @@ Phase 2 (later): offline calc, prestige unlocks, multi-creature deployment, pres
   },
   "rewards": {
     "enemy": {
-      "gold": { "base": 10, "perStage": 1 },
-      "xp": { "base": 5, "perStage": 1 }
+      "gold": { "base": 0, "perStage": 10 },
+      "xp": { "base": 0, "perStage": 5 }
     },
     "boss": {
-      "gold": { "base": 1000 },
-      "shards": { "base": 10 },
-      "gemChance": { "base": 0.05 }
+      "gold": { "base": 0, "perStage": 1000 },
+      "shards": { "base": 0, "perStage": 10 },
+      "gemChance": { "base": 0, "perStage": 0.05 }
     }
   },
   "lootTables": {
@@ -75,7 +75,8 @@ Phase 2 (later): offline calc, prestige unlocks, multi-creature deployment, pres
     "thresholds": [
       { "stage": 20, "table": "dungeon" }
     ]
-  }
+  },
+  "firstClearBonusPercent": 0.05
 }
 ```
 - Schema for validation to ensure positive numbers, exponent ranges, etc.
@@ -102,20 +103,20 @@ Phase 2 (later): offline calc, prestige unlocks, multi-creature deployment, pres
 ## Milestones & Task Breakdown
 
 ### Milestone A – Config & Infrastructure
-- [ ] Define `ProgressionConfig` types + JSON file; update data source + validator.
-- [ ] Implement `StageGenerator` + helper math functions.
-- [ ] Extend `SimulationRuntime` to use generator for listStages & encounter prep.
+- [x] Define `ProgressionConfig` types + JSON file; update data source + validator.
+- [x] Implement `StageGenerator` + helper math functions.
+- [x] Extend `SimulationRuntime` to use generator for listStages & encounter prep.
 - [ ] Provide minimal integration tests via TypeScript unit or harness logging.
 
 ### Milestone B – Boss Mechanics
-- [ ] Add boss timer/enrage tracking inside encounter loop.
-- [ ] Emit runtime hooks for timer updates/enrage state.
-- [ ] Update harness UI to display timer + enrage.
+- [x] Add boss timer/enrage tracking inside encounter loop.
+- [x] Emit runtime hooks for timer updates/enrage state.
+- [x] Update harness UI to display timer + enrage.
 
 ### Milestone C – Reward & Progress Tracking
-- [ ] Implement reward scaling + first-clear permanent bonuses.
-- [ ] Persist stage clears, permanent buffs in progress snapshot.
-- [ ] Update UI to show boss reward preview & permanent bonus.
+- [x] Implement reward scaling + first-clear permanent bonuses.
+- [x] Persist stage clears, permanent buffs in progress snapshot.
+- [x] Update UI to show boss reward preview & permanent bonus.
 
 Later milestones: offline progress, prestige, multi-creature parties, gating unlocks.
 
@@ -130,4 +131,3 @@ Later milestones: offline progress, prestige, multi-creature parties, gating unl
 ## Risks
 - Large refactor touches runtime core; need careful regression QA (combat loop, rewards, persistence).
 - First-clear bonuses require new persistence fields; coordinate with save format and migration strategy.
-

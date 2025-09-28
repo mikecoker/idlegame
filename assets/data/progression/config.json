@@ -34,5 +34,6 @@
     "thresholds": [
       { "stage": 20, "table": "dungeon" }
     ]
-  }
+  },
+  "firstClearBonusPercent": 0.05
 }

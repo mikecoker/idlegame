@@ -223,6 +223,27 @@ export class PlayerInventory {
     return result;
   }
 
+  unequipSlot(slot: string): InventoryMutationResult {
+    const result: InventoryMutationResult = { success: false };
+    ensureMessages(result);
+
+    const owned = this.equipped[slot] ?? null;
+    if (!owned) {
+      result.messages!.push(`No item equipped in ${slot}.`);
+      return result;
+    }
+
+    this.equipped[slot] = null;
+    this.inventory.push(cloneOwnedEquipment(owned));
+
+    result.success = true;
+    result.heroNeedsRefresh = true;
+    result.inventoryChanged = true;
+    result.resetEncounter = true;
+    result.messages!.push(`${owned.itemId} unequipped from ${slot}.`);
+    return result;
+  }
+
   equipFirstMatching(itemId: string): InventoryMutationResult {
     const owned = this.inventory.find((item) => item.itemId === itemId);
     if (!owned) {

@@ -17,7 +17,13 @@ import {
 } from "../economy/LootTable";
 import { EnemyUnit, StageDefinition } from "../progression/Stage";
 import { ProgressionConfig } from "../progression/ProgressionConfig";
-import { StageGenerator, StageBlueprint, BossEncounterConfig, StageRewardsSummary } from "../progression/StageGenerator";
+import {
+  StageGenerator,
+  StageBlueprint,
+  BossEncounterConfig,
+  StageRewardsSummary,
+  StagePreview,
+} from "../progression/StageGenerator";
 import {
   CraftingRecipe,
   ItemDefinition,
@@ -55,6 +61,15 @@ export interface SimulationState {
   hero: Character | null;
   enemy: Character | null;
   lootTableId: string | null;
+  bossTimerRemaining: number;
+  bossTimerTotal: number;
+  bossEnraged: boolean;
+}
+
+export interface ProgressionSnapshot {
+  highestStageCleared: number;
+  clearedStageIds: number[];
+  statBonusMultiplier: number;
 }
 
 export class SimulationRuntime {
@@ -68,6 +83,9 @@ export class SimulationRuntime {
   protected stageCache: Map<number, StageBlueprint> = new Map();
   protected stageRewards: StageRewardsSummary | null = null;
   protected bossConfig: BossEncounterConfig | null = null;
+  protected bossTimerTotal = 0;
+  protected bossTimerRemaining = 0;
+  protected bossEnraged = false;
   protected lootTables: Map<string, LootTableConfig> = new Map();
   protected itemDefinitions: ItemDefinition[] = [];
   protected craftingRecipes: CraftingRecipe[] = [];
@@ -84,6 +102,12 @@ export class SimulationRuntime {
   protected currentEnemyLabel = "";
   protected currentWaveIsBoss = false;
   protected announcedResult = false;
+
+  protected clearedStages: Set<number> = new Set();
+  protected highestStageCleared = 0;
+  protected permanentStatMultiplier = 1;
+  protected appliedProgressionMultiplier = 1;
+  protected gemRewardPool = ["ember-gem", "glacial-core", "storm-sigil"];
 
   protected tickIntervalSeconds: number;
   protected autoStart: boolean;
@@ -173,6 +197,9 @@ export class SimulationRuntime {
       hero: this.hero,
       enemy: this.enemy,
       lootTableId: this.selectedLootId,
+      bossTimerRemaining: this.currentWaveIsBoss ? this.bossTimerRemaining : 0,
+      bossTimerTotal: this.currentWaveIsBoss ? this.bossTimerTotal : 0,
+      bossEnraged: this.currentWaveIsBoss ? this.bossEnraged : false,
     };
   }
 
@@ -181,7 +208,7 @@ export class SimulationRuntime {
   }
 
   listStages(): StageDefinition[] {
-    const maxStages = Math.max(this.stageIndex + 10, 50);
+    const maxStages = Math.max(this.stageIndex + 10, this.highestStageCleared + 10, 50);
     const stages: StageDefinition[] = [];
     for (let index = 0; index < maxStages; index += 1) {
       const stageNumber = index + 1;
@@ -242,6 +269,46 @@ export class SimulationRuntime {
     this.emitState();
   }
 
+  getProgressionSnapshot(): ProgressionSnapshot {
+    return {
+      highestStageCleared: this.highestStageCleared,
+      clearedStageIds: Array.from(this.clearedStages.values()).sort((a, b) => a - b),
+      statBonusMultiplier: this.permanentStatMultiplier,
+    };
+  }
+
+  setProgressionSnapshot(snapshot: ProgressionSnapshot | null | undefined) {
+    if (!snapshot) {
+      this.clearedStages.clear();
+      this.highestStageCleared = 0;
+      this.permanentStatMultiplier = 1;
+      this.appliedProgressionMultiplier = 1;
+      this.applyProgressionBonusesToHero();
+      return;
+    }
+    this.clearedStages = new Set(snapshot.clearedStageIds ?? []);
+    this.highestStageCleared = Math.max(0, snapshot.highestStageCleared ?? 0);
+    const multiplier = snapshot.statBonusMultiplier ?? 1;
+    this.permanentStatMultiplier = Math.max(1, multiplier);
+    this.appliedProgressionMultiplier = 1;
+    this.applyProgressionBonusesToHero();
+  }
+
+  getStagePreview(stageNumber?: number): StagePreview | null {
+    const blueprint = this.getStageBlueprint(stageNumber ?? this.stageIndex + 1);
+    if (!blueprint) {
+      return null;
+    }
+    return {
+      stageNumber: blueprint.stageNumber,
+      name: blueprint.name,
+      waveCount: blueprint.waves.length,
+      lootTableId: blueprint.lootTableId,
+      rewards: { ...blueprint.rewards },
+      bossConfig: { ...blueprint.bossConfig },
+    };
+  }
+
   listItemDefinitions(): ItemDefinition[] {
     return this.itemLibrary.listDefinitions();
   }
@@ -298,6 +365,15 @@ export class SimulationRuntime {
       return this.processInventoryMutation(guard);
     }
     const result = this.playerInventory.equipFirstMatching(itemId);
+    return this.processInventoryMutation(result);
+  }
+
+  unequipSlot(slot: string): InventoryMutationResult {
+    const guard = this.ensureInventoryReady();
+    if (guard) {
+      return this.processInventoryMutation(guard);
+    }
+    const result = this.playerInventory.unequipSlot(slot);
     return this.processInventoryMutation(result);
   }
 
@@ -406,11 +482,16 @@ export class SimulationRuntime {
     this.currentStageName = blueprint?.name ?? `Stage ${this.stageIndex + 1}`;
     this.stageRewards = blueprint?.rewards ?? null;
     this.bossConfig = blueprint?.bossConfig ?? null;
+    this.bossTimerTotal = blueprint?.bossConfig?.timerSeconds ?? 0;
+    this.bossTimerRemaining = this.bossTimerTotal;
+    this.bossEnraged = false;
     this.currentWaveIsBoss = false;
 
     this.hero.resetVitals();
     this.encounter = null;
     this.announcedResult = false;
+
+    this.applyProgressionBonusesToHero();
 
     if (!this.prepareNextWave()) {
       this.log("[Runtime] Failed to prepare first wave.");
@@ -423,10 +504,18 @@ export class SimulationRuntime {
 
   startAuto() {
     if (!this.encounter) {
-      return;
+      if (!this.hero || !this.hero.isAlive) {
+        return;
+      }
+      if (!this.currentWaveQueue.length) {
+        if (!this.prepareNextWave()) {
+          return;
+        }
+      }
+      this.startNextEncounter(true);
     }
-    this.encounter.setTickInterval(this.tickIntervalSeconds);
-    this.encounter.start();
+    this.encounter?.setTickInterval(this.tickIntervalSeconds);
+    this.encounter?.start();
     this.emitState();
   }
 
@@ -457,6 +546,23 @@ export class SimulationRuntime {
   tick(deltaSeconds: number) {
     if (!this.encounter) {
       return;
+    }
+
+    if (this.currentWaveIsBoss) {
+      if (this.bossTimerRemaining > 0) {
+        this.bossTimerRemaining = Math.max(0, this.bossTimerRemaining - deltaSeconds);
+        if (this.bossTimerRemaining <= 0 && !this.announcedResult) {
+          this.handleBossTimeout();
+          return;
+        }
+      }
+
+      if (!this.bossEnraged && this.bossConfig && this.enemy && this.enemy.isAlive) {
+        const hpRatio = this.enemy.maxHealth > 0 ? this.enemy.health / this.enemy.maxHealth : 1;
+        if (hpRatio <= Math.max(0, Math.min(1, this.bossConfig.enrageHpPercent))) {
+          this.applyBossEnrage();
+        }
+      }
     }
 
     const events = this.encounter.tick(deltaSeconds);
@@ -522,6 +628,9 @@ export class SimulationRuntime {
     const clearedStageName = this.currentStageName;
 
     this.completeWave();
+    if (wasBossWave) {
+      this.applyBossVictory(clearedStageIndex + 1, summary);
+    }
     if (!this.prepareNextWave()) {
       this.log("[Runtime] All stages complete.");
       this.encounter = null;
@@ -614,6 +723,8 @@ export class SimulationRuntime {
     }
 
     this.hero = new Character(this.cloneData(definition.data));
+    this.appliedProgressionMultiplier = 1;
+    this.applyProgressionBonusesToHero();
   }
 
   protected refreshHeroLoadout(resetVitals = false) {
@@ -726,6 +837,15 @@ export class SimulationRuntime {
     }
 
     this.currentWaveNumber = this.stageWaveCompleted + 1;
+    if (this.currentWaveIsBoss) {
+      this.bossTimerTotal = this.bossConfig?.timerSeconds ?? 0;
+      this.bossTimerRemaining = this.bossTimerTotal;
+      this.bossEnraged = false;
+    } else {
+      this.bossTimerTotal = 0;
+      this.bossTimerRemaining = 0;
+      this.bossEnraged = false;
+    }
     return true;
   }
 
@@ -804,6 +924,168 @@ export class SimulationRuntime {
       this.stageCache.set(stageNumber, blueprint);
     }
     return this.stageCache.get(stageNumber) ?? null;
+  }
+
+  protected handleBossTimeout() {
+    if (this.bossTimerRemaining > 0) {
+      return;
+    }
+    this.log("[Runtime] Boss time limit reached. Retreating to regroup.");
+    this.announcedResult = true;
+    if (this.hooks.onEncounterComplete) {
+      this.hooks.onEncounterComplete({
+        victor: "target",
+        swings: 0,
+        elapsedSeconds: this.bossTimerTotal,
+        totalDamageFromSource: 0,
+        totalDamageFromTarget: 0,
+        rewards: this.createEmptyRewards(),
+        running: false,
+      } as EncounterSummary);
+    }
+    this.handleHeroDefeat();
+    this.emitState();
+  }
+
+  protected applyBossEnrage() {
+    if (!this.enemy || !this.bossConfig) {
+      return;
+    }
+    this.bossEnraged = true;
+    this.enemy.applyAttackMultiplier(this.bossConfig.enrageAttackMultiplier);
+    this.log("[Runtime] Boss enters an enraged frenzy! Attack power surges.");
+    this.emitState();
+  }
+
+  protected applyBossVictory(stageNumber: number, summary: EncounterSummary) {
+    const blueprint = this.getStageBlueprint(stageNumber);
+    if (!blueprint || !this.stageRewards) {
+      return;
+    }
+    const rewards = this.stageRewards;
+    const bonus = this.createEmptyRewards();
+    if (rewards.bossGold > 0) {
+      bonus.gold = Math.max(0, Math.round(rewards.bossGold));
+    }
+    if (rewards.bossShards > 0) {
+      bonus.materials["boss-shard"] = Math.max(1, Math.round(rewards.bossShards));
+    }
+    if (rewards.bossGemChance > 0 && Math.random() <= rewards.bossGemChance) {
+      bonus.augments.push({ augmentId: this.pickGemReward(stageNumber), quantity: 1 });
+    }
+
+    if (
+      bonus.gold > 0 ||
+      Object.keys(bonus.materials).length > 0 ||
+      bonus.equipment.length > 0 ||
+      bonus.augments.length > 0
+    ) {
+      summary.rewards = this.mergeEncounterRewards(summary.rewards, bonus);
+      this.grantEncounterRewards(bonus);
+      const parts: string[] = [];
+      if (bonus.gold) {
+        parts.push(`${bonus.gold} gold`);
+      }
+      Object.entries(bonus.materials).forEach(([id, qty]) => {
+        parts.push(`${id} x${qty}`);
+      });
+      if (bonus.augments.length) {
+        parts.push(`${bonus.augments.map((a) => a.augmentId).join(", ")}`);
+      }
+      this.log(`[Runtime] Boss rewards claimed: ${parts.join(", ")}.`);
+    }
+
+    const firstClear = this.recordStageClear(stageNumber, rewards.firstClearBonusPercent);
+    if (firstClear && rewards.firstClearBonusPercent > 0) {
+      const percent = rewards.firstClearBonusPercent * 100;
+      const total = (this.permanentStatMultiplier - 1) * 100;
+      this.log(
+        `[Runtime] First clear bonus unlocked! Permanent +${percent.toFixed(1)}% stats (total ${total.toFixed(1)}%).`
+      );
+    }
+  }
+
+  protected recordStageClear(stageNumber: number, bonusPercent: number): boolean {
+    const isFirst = !this.clearedStages.has(stageNumber);
+    this.clearedStages.add(stageNumber);
+    if (stageNumber > this.highestStageCleared) {
+      this.highestStageCleared = stageNumber;
+    }
+    const normalizedBonus = Math.max(0, bonusPercent ?? 0);
+    this.permanentStatMultiplier = 1 + this.clearedStages.size * normalizedBonus;
+    this.applyProgressionBonusesToHero();
+    return isFirst;
+  }
+
+  protected applyProgressionBonusesToHero() {
+    if (!this.hero) {
+      return;
+    }
+    const targetMultiplier = this.permanentStatMultiplier;
+    const diff = targetMultiplier / this.appliedProgressionMultiplier;
+    if (Math.abs(diff - 1) < 1e-4) {
+      return;
+    }
+    this.hero.applyGlobalStatBonus(diff);
+    this.appliedProgressionMultiplier = targetMultiplier;
+    this.hero.updateStats();
+  }
+
+  protected mergeEncounterRewards(
+    base: EncounterRewards | undefined,
+    bonus: EncounterRewards
+  ): EncounterRewards {
+    const target = base ? { ...base } : this.createEmptyRewards();
+    target.xp = (target.xp ?? 0) + (bonus.xp ?? 0);
+    target.gold = (target.gold ?? 0) + (bonus.gold ?? 0);
+
+    const materials: Record<string, number> = { ...(target.materials ?? {}) };
+    Object.entries(bonus.materials ?? {}).forEach(([id, qty]) => {
+      materials[id] = (materials[id] ?? 0) + qty;
+    });
+    target.materials = materials;
+
+    target.equipment = [...(target.equipment ?? [])];
+    bonus.equipment?.forEach((entry) => {
+      const existing = target.equipment?.find(
+        (item) => item.itemId === entry.itemId && item.rarity === entry.rarity
+      );
+      if (existing) {
+        existing.quantity += entry.quantity;
+      } else {
+        target.equipment.push({ ...entry });
+      }
+    });
+
+    target.augments = [...(target.augments ?? [])];
+    bonus.augments?.forEach((entry) => {
+      const existing = target.augments?.find((item) => item.augmentId === entry.augmentId);
+      if (existing) {
+        existing.quantity += entry.quantity;
+      } else {
+        target.augments.push({ ...entry });
+      }
+    });
+
+    return target;
+  }
+
+  protected createEmptyRewards(): EncounterRewards {
+    return {
+      xp: 0,
+      gold: 0,
+      materials: {},
+      equipment: [],
+      augments: [],
+    };
+  }
+
+  protected pickGemReward(stageNumber: number): string {
+    if (!this.gemRewardPool.length) {
+      return "ember-gem";
+    }
+    const index = Math.abs(stageNumber - 1) % this.gemRewardPool.length;
+    return this.gemRewardPool[index];
   }
 
   protected sanitiseLootTable(table: LootTableConfig): LootTableConfig {

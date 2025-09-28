@@ -39,15 +39,69 @@ body {
 
 .status-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
+  gap: 14px;
   background: rgba(16, 24, 38, 0.85);
   border: 1px solid rgba(120, 167, 255, 0.18);
   border-radius: 16px;
-  padding: 14px 18px;
+  padding: 18px 20px;
   box-shadow: 0 14px 32px rgba(5, 12, 26, 0.35);
   margin-top: 8px;
   margin-bottom: 16px;
+}
+
+.status-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.status-health-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.status-health-bar {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(9, 15, 26, 0.78);
+  border: 1px solid rgba(120, 167, 255, 0.14);
+  box-shadow: inset 0 0 18px rgba(12, 20, 36, 0.45);
+}
+
+.status-health-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-health-track {
+  position: relative;
+  height: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(48, 64, 92, 0.55);
+}
+
+.status-health-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transition: width 0.2s ease-out;
+  background: linear-gradient(135deg, rgba(94, 170, 255, 0.9), rgba(117, 204, 255, 0.65));
+}
+
+.status-health-hero .status-health-fill {
+  background: linear-gradient(135deg, rgba(78, 214, 152, 0.95), rgba(116, 238, 189, 0.7));
+}
+
+.status-health-enemy .status-health-fill {
+  background: linear-gradient(135deg, rgba(244, 95, 95, 0.95), rgba(255, 161, 102, 0.7));
 }
 
 .tab-strip {
@@ -460,6 +514,95 @@ body {
 .panel table td {
   padding: 6px 8px;
   border-bottom: 1px dashed rgba(120, 167, 255, 0.15);
+}
+
+.rewards-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reward-bonus-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(54, 84, 142, 0.32);
+  border: 1px solid rgba(120, 167, 255, 0.22);
+  font-size: 0.8rem;
+}
+
+.bonus-label {
+  color: rgba(154, 189, 255, 0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.65rem;
+}
+
+.bonus-value {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.reward-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(12, 20, 34, 0.7);
+  border-radius: 14px;
+  padding: 14px;
+  border: 1px solid rgba(120, 167, 255, 0.12);
+}
+
+.reward-preview-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reward-preview-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(210, 224, 255, 0.92);
+}
+
+.reward-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.75rem;
+  color: rgba(198, 212, 255, 0.7);
+}
+
+.reward-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.reward-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(18, 28, 44, 0.72);
+  border: 1px solid rgba(120, 167, 255, 0.16);
+  box-shadow: inset 0 0 14px rgba(8, 12, 22, 0.35);
+}
+
+.reward-preview-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(154, 189, 255, 0.7);
+}
+
+.reward-preview-value {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .item-cell {

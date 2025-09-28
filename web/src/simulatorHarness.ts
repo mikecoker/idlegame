@@ -1,4 +1,8 @@
-import { SimulationRuntime, SimulationState } from "@core/runtime/SimulationRuntime";
+import {
+  SimulationRuntime,
+  SimulationState,
+  ProgressionSnapshot,
+} from "@core/runtime/SimulationRuntime";
 import {
   EncounterEvent,
   EncounterRewards,
@@ -28,6 +32,7 @@ import {
 } from "@core/stats/StatBlock";
 import type { InventorySnapshot } from "@core/runtime/PlayerInventory";
 import { formatAugmentRewards, formatEquipmentRewards } from "@core/utils/formatting";
+import type { StagePreview } from "@core/progression/StageGenerator";
 import type { StageDefinition as CoreStageDefinition } from "@core/progression/Stage";
 
 export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
@@ -83,7 +88,7 @@ interface CombatTelemetry {
 }
 
 interface PersistedState {
-  version: 2;
+  version: number;
   heroId: string;
   stageIndex: number;
   totalWavesCompleted: number;
@@ -96,6 +101,10 @@ interface PersistedState {
   historyCounter?: number;
   inventorySnapshot?: InventorySnapshot;
   resumeAfterVictory?: boolean;
+  highestStageCleared?: number;
+  clearedStages?: number[];
+  statBonusMultiplier?: number;
+  progressionSnapshot?: ProgressionSnapshot;
   timestamp: number;
 }
 
@@ -120,6 +129,13 @@ export interface StatusPayload {
   heroDamage: number;
   enemyDamage: number;
   winner: string | null;
+  heroHealth: number;
+  heroMaxHealth: number;
+  enemyHealth: number;
+  enemyMaxHealth: number;
+  bossTimerRemaining: number;
+  bossTimerTotal: number;
+  bossEnraged: boolean;
 }
 
 export interface HarnessListeners {
@@ -355,6 +371,12 @@ export class SimulatorHarness {
   protected rewardClaimed = false;
   protected resumeAfterVictory = false;
 
+  protected bossTimerRemaining = 0;
+  protected bossTimerTotal = 0;
+  protected bossEnraged = false;
+  protected stagePreview: StagePreview | null = null;
+  protected permanentBonusPercent = 0;
+
   protected tickIntervalSeconds = 0.1;
   protected pendingSourceProgress?: CharacterProgressSnapshot;
   protected autoStart = false;
@@ -433,6 +455,14 @@ export class SimulatorHarness {
     };
 
     this.listeners.onControls(payload);
+  }
+
+  getStagePreview(): StagePreview | null {
+    return this.stagePreview ? this.cloneStagePreview(this.stagePreview) : null;
+  }
+
+  getPermanentBonusPercent(): number {
+    return this.permanentBonusPercent;
   }
 
   protected buildCraftingGroupState(type: CraftingRecipeType): CraftingGroupState {
@@ -681,6 +711,7 @@ export class SimulatorHarness {
 
     const stages = this.runtime.listStages();
     this.updateStageCatalog(stages);
+    this.updateStagePreview();
 
     const lootTables = this.runtime.listLootTables();
     this.lootTables = lootTables.map((table) => {
@@ -742,6 +773,9 @@ export class SimulatorHarness {
     this.currentEnemyLabel = state.enemyLabel ?? this.currentEnemyLabel;
     this.currentWaveIsBoss = state.isBossWave;
     this.running = state.running;
+    this.bossTimerRemaining = state.bossTimerRemaining ?? 0;
+    this.bossTimerTotal = state.bossTimerTotal ?? 0;
+    this.bossEnraged = !!state.bossEnraged;
 
     if (state.lootTableId && state.lootTableId !== this.selectedLootId) {
       this.selectedLootId = state.lootTableId;
@@ -771,6 +805,7 @@ export class SimulatorHarness {
       this.renderStatsTable();
     }
 
+    this.updateStagePreview();
     this.refreshStatus();
     this.notifyControlState();
   }
@@ -933,6 +968,31 @@ export class SimulatorHarness {
     }
     const stages = this.runtime.listStages();
     this.updateStageCatalog(stages);
+    this.updateStagePreview();
+  }
+
+  protected updateStagePreview() {
+    if (!this.runtime) {
+      this.stagePreview = null;
+      this.permanentBonusPercent = 0;
+      return;
+    }
+    const preview = this.runtime.getStagePreview(this.stageIndex + 1);
+    this.stagePreview = preview ? this.cloneStagePreview(preview) : null;
+    const snapshot = this.runtime.getProgressionSnapshot();
+    const multiplier = snapshot?.statBonusMultiplier ?? 1;
+    this.permanentBonusPercent = Math.max(0, (multiplier - 1) * 100);
+  }
+
+  protected cloneStagePreview(preview: StagePreview): StagePreview {
+    return {
+      stageNumber: preview.stageNumber,
+      name: preview.name,
+      waveCount: preview.waveCount,
+      lootTableId: preview.lootTableId,
+      rewards: { ...preview.rewards },
+      bossConfig: { ...preview.bossConfig },
+    };
   }
 
   protected populateLootSelect() {
@@ -1686,6 +1746,10 @@ export class SimulatorHarness {
     if (rewards.augments && rewards.augments.length) {
       this.pushLog(`[Loot] Augments: ${formatAugmentRewards(rewards.augments)}`);
     }
+    const shardQty = rewards.materials?.["boss-shard"] ?? 0;
+    if (shardQty > 0) {
+      this.pushLog(`[Loot] Shards: boss-shard x${shardQty}`);
+    }
 
     if (this.hero && rewards.xp > 0) {
       const levels = this.hero.addExperience(rewards.xp);
@@ -1709,6 +1773,10 @@ export class SimulatorHarness {
       : "Idle";
 
     const summary = this.lastSummary;
+    const heroHealth = this.hero ? Math.max(0, this.hero.health) : 0;
+    const heroMaxHealth = this.hero ? Math.max(0, this.hero.maxHealth) : 0;
+    const enemyHealth = this.enemy ? Math.max(0, this.enemy.health) : 0;
+    const enemyMaxHealth = this.enemy ? Math.max(0, this.enemy.maxHealth) : 0;
 
     const payload: StatusPayload = {
       label: `${statusLabel} • tick ${this.tickIntervalSeconds.toFixed(2)}s`,
@@ -1720,6 +1788,13 @@ export class SimulatorHarness {
       heroDamage: summary?.totalDamageFromSource ?? 0,
       enemyDamage: summary?.totalDamageFromTarget ?? 0,
       winner: summary?.victor ?? null,
+      heroHealth,
+      heroMaxHealth,
+      enemyHealth,
+      enemyMaxHealth,
+      bossTimerRemaining: this.bossTimerRemaining,
+      bossTimerTotal: this.bossTimerTotal,
+      bossEnraged: this.bossEnraged,
     };
 
     this.listeners.onStatus?.(payload);
@@ -1898,8 +1973,10 @@ export class SimulatorHarness {
 
       const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id ?? "";
 
+      const progression = this.runtime ? this.runtime.getProgressionSnapshot() : null;
+
       const state: PersistedState = {
-        version: 2,
+        version: 3,
         heroId,
         stageIndex: this.stageIndex,
         totalWavesCompleted: this.totalWavesCompleted,
@@ -1912,6 +1989,10 @@ export class SimulatorHarness {
         historyCounter: this.historyCounter,
         inventorySnapshot: snapshot,
         resumeAfterVictory: this.resumeAfterVictory,
+        highestStageCleared: progression?.highestStageCleared,
+        clearedStages: progression ? [...progression.clearedStageIds] : undefined,
+        statBonusMultiplier: progression?.statBonusMultiplier,
+        progressionSnapshot: progression ?? undefined,
         timestamp: Date.now(),
       };
 
@@ -1928,7 +2009,7 @@ export class SimulatorHarness {
         return false;
       }
       const state = JSON.parse(raw) as PersistedState;
-      if (!state || state.version !== 2) {
+      if (!state || (state.version !== 2 && state.version !== 3)) {
         window.localStorage.removeItem(STORAGE_KEY);
         return false;
       }
@@ -1944,7 +2025,8 @@ export class SimulatorHarness {
         this.selectLootTable(null, { persist: false, notifyRuntime: true });
       }
 
-      this.stageIndex = Math.max(0, Math.min(state.stageIndex ?? 0, this.stages.length - 1));
+      this.stageIndex = Math.max(0, state.stageIndex ?? 0);
+      this.ensureStageListCoverage(this.stageIndex);
       this.runtime?.setStageIndex(this.stageIndex);
       this.totalWavesCompleted = Math.max(0, state.totalWavesCompleted ?? 0);
       this.tickIntervalSeconds = Math.max(0.01, state.tickInterval ?? 0.1);
@@ -1954,10 +2036,7 @@ export class SimulatorHarness {
 
       this.pendingSourceProgress = state.heroProgress;
       this.resumeAfterVictory = !!state.resumeAfterVictory;
-
-      if (this.listeners.onControls) {
-        this.notifyControlState();
-      }
+      this.updateStagePreview();
 
       this.history = state.history ? state.history.slice(-40) : [];
       this.historyCounter = state.historyCounter ?? this.history.length;
@@ -1984,6 +2063,23 @@ export class SimulatorHarness {
       this.inventorySnapshot = snapshot;
       this.applyInventorySnapshot(snapshot);
       this.syncInventoryView();
+
+      const progressionSnapshot =
+        state.progressionSnapshot ??
+        (state.version === 2
+          ? {
+              highestStageCleared: state.highestStageCleared ?? 0,
+              clearedStageIds: state.clearedStages ?? [],
+              statBonusMultiplier: state.statBonusMultiplier ?? 1,
+            }
+          : undefined);
+      if (progressionSnapshot && this.runtime) {
+        this.runtime.setProgressionSnapshot(progressionSnapshot);
+        this.updateStagePreview();
+      }
+      if (this.listeners.onControls) {
+        this.notifyControlState();
+      }
       return true;
     } catch (err) {
       console.warn("[Harness] Failed to restore state", err);
@@ -2123,6 +2219,7 @@ export class SimulatorHarness {
     this.stageIndex = target;
     this.ensureStageListCoverage(target);
     this.runtime?.setStageIndex(target);
+    this.updateStagePreview();
     this.resetEncounter(false);
   }
 
@@ -2132,25 +2229,23 @@ export class SimulatorHarness {
   }
 
   unequipSlot(slot: EquippedSlotKey): boolean {
-    const owned = this.equippedItems[slot];
-    if (!owned) {
+    if (!this.runtime) {
       return false;
     }
-
-    const definition = this.itemDefs.get(owned.itemId);
-
     this.pauseSimulation();
-    this.equippedItems[slot] = null;
-    this.equipmentInventory.push({ ...owned, augments: [...owned.augments] });
-
-    this.syncInventoryView();
-    this.updateCraftingAvailability();
+    const result = this.runtime.unequipSlot(slot);
+    if (
+      result.success ||
+      result.inventoryChanged ||
+      result.materialsChanged ||
+      result.consumablesChanged
+    ) {
+      this.refreshInventorySnapshot();
+    } else {
+      this.updateCraftingAvailability();
+    }
     this.persistState();
-
-    this.resetEncounter(false);
-
-    this.pushLog(`[Equip] ${definition?.name ?? owned.itemId} unequipped.`);
-    return true;
+    return result.success;
   }
 
   getEquipPreview(instanceId: string): StatPreviewRow[] | null {

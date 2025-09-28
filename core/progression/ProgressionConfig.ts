@@ -63,4 +63,5 @@ export interface ProgressionConfig {
   boss: BossScalingConfig;
   rewards: ProgressionRewardsConfig;
   lootTables: LootTableRoutingConfig;
+  firstClearBonusPercent?: number;
 }
