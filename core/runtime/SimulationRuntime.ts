@@ -49,6 +49,14 @@ export interface SimulationRuntimeOptions {
   hooks?: SimulationRuntimeHooks;
 }
 
+export interface PartySummary {
+  size: number;
+  alive: number;
+  averageLevel: number;
+  totalAttackPower: number;
+  totalDps: number;
+}
+
 export interface SimulationState {
   heroId: string | null;
   stageIndex: number;
@@ -64,6 +72,10 @@ export interface SimulationState {
   bossTimerRemaining: number;
   bossTimerTotal: number;
   bossEnraged: boolean;
+  party: Character[];
+  enemyParty: Character[];
+  partyIds: (string | null)[];
+  partySummary: PartySummary;
 }
 
 export interface ProgressionSnapshot {
@@ -90,13 +102,15 @@ export class SimulationRuntime {
   protected itemDefinitions: ItemDefinition[] = [];
   protected craftingRecipes: CraftingRecipe[] = [];
 
+  protected party: Character[] = [];
+  protected enemyParty: Character[] = [];
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
 
   protected stageIndex = 0;
   protected stageWaveCompleted = 0;
   protected totalWavesCompleted = 0;
-  protected currentWaveQueue: EnemyUnit[] = [];
+  protected currentWaveUnits: EnemyUnit[] = [];
   protected currentWaveNumber = 0;
   protected currentStageName = "";
   protected currentEnemyLabel = "";
@@ -114,6 +128,11 @@ export class SimulationRuntime {
 
   protected selectedHeroId: string | null = null;
   protected selectedLootId: string | null = null;
+
+  protected selectedHeroIds: (string | null)[] = [];
+  protected partyRoster: Map<string, Character> = new Map();
+  protected readonly maxPartySize = 5;
+  protected readonly partySlotThresholds = [0, 10, 25, 50, 80];
 
   protected initialized = false;
   protected itemLibrary = new ItemLibrary();
@@ -140,6 +159,8 @@ export class SimulationRuntime {
     if (this.progressionConfig) {
       this.stageGenerator = new StageGenerator(this.progressionConfig);
     }
+
+    this.updatePartyUnlocks();
 
     const lootTables = await this.dataSource.loadLootTables();
     this.lootTables.clear();
@@ -173,11 +194,24 @@ export class SimulationRuntime {
     if (!this.selectedHeroId && this.heroes.length) {
       this.selectedHeroId = this.heroes[0].id;
     }
+    if (!this.selectedHeroIds.length && this.heroes.length) {
+      this.selectedHeroIds = new Array(this.maxPartySize).fill(null);
+      this.heroes.forEach((hero, index) => {
+        if (index < this.maxPartySize) {
+          this.selectedHeroIds[index] = hero.id;
+        }
+      });
+    } else if (this.selectedHeroIds.length) {
+      this.selectedHeroIds[0] = this.selectedHeroIds[0] ?? this.selectedHeroId;
+    }
+    if (this.selectedHeroIds[0]) {
+      this.selectedHeroId = this.selectedHeroIds[0];
+    }
     if (!this.selectedLootId && this.lootTables.size) {
       this.selectedLootId = Array.from(this.lootTables.keys())[0];
     }
 
-    this.ensureHero(freshHero);
+    this.ensureParty(freshHero);
     this.refreshHeroLoadout(false);
     this.resetEncounterInternal();
     this.initialized = true;
@@ -200,6 +234,10 @@ export class SimulationRuntime {
       bossTimerRemaining: this.currentWaveIsBoss ? this.bossTimerRemaining : 0,
       bossTimerTotal: this.currentWaveIsBoss ? this.bossTimerTotal : 0,
       bossEnraged: this.currentWaveIsBoss ? this.bossEnraged : false,
+      party: this.party,
+      enemyParty: this.enemyParty,
+      partyIds: this.selectedHeroIds.slice(0, this.party.length),
+      partySummary: this.getPartySummary(),
     };
   }
 
@@ -249,13 +287,19 @@ export class SimulationRuntime {
 
   setHero(heroId: string, fresh = true) {
     this.selectedHeroId = heroId;
-    this.ensureHero(fresh);
+    if (!this.selectedHeroIds.length) {
+      this.updatePartyUnlocks();
+    }
+    this.selectedHeroIds[0] = heroId;
+    this.ensureParty(fresh);
     this.refreshHeroLoadout();
     this.emitState();
   }
 
   setStageIndex(index: number) {
     this.stageIndex = Math.max(0, index);
+    this.updatePartyUnlocks();
+    this.ensureParty(false);
     this.resetEncounterInternal();
     this.emitState();
   }
@@ -283,7 +327,7 @@ export class SimulationRuntime {
       this.highestStageCleared = 0;
       this.permanentStatMultiplier = 1;
       this.appliedProgressionMultiplier = 1;
-      this.applyProgressionBonusesToHero();
+      this.applyProgressionBonusesToParty();
       return;
     }
     this.clearedStages = new Set(snapshot.clearedStageIds ?? []);
@@ -291,7 +335,9 @@ export class SimulationRuntime {
     const multiplier = snapshot.statBonusMultiplier ?? 1;
     this.permanentStatMultiplier = Math.max(1, multiplier);
     this.appliedProgressionMultiplier = 1;
-    this.applyProgressionBonusesToHero();
+    this.updatePartyUnlocks();
+    this.ensureParty(false);
+    this.applyProgressionBonusesToParty();
   }
 
   getStagePreview(stageNumber?: number): StagePreview | null {
@@ -462,13 +508,14 @@ export class SimulationRuntime {
     if (!this.initialized) {
       return;
     }
-    this.ensureHero(freshHero);
+    this.ensureParty(freshHero);
     this.refreshHeroLoadout();
+    this.resetPartyVitals();
     this.resetEncounterInternal(autoStart);
   }
 
   protected resetEncounterInternal(autoStart = this.autoStart) {
-    if (!this.hero) {
+    if (!this.party.length) {
       return;
     }
 
@@ -476,7 +523,7 @@ export class SimulationRuntime {
 
     this.stageWaveCompleted = 0;
     this.totalWavesCompleted = 0;
-    this.currentWaveQueue = [];
+    this.currentWaveUnits = [];
     this.currentWaveNumber = 0;
     const blueprint = this.getStageBlueprint(this.stageIndex + 1);
     this.currentStageName = blueprint?.name ?? `Stage ${this.stageIndex + 1}`;
@@ -487,11 +534,12 @@ export class SimulationRuntime {
     this.bossEnraged = false;
     this.currentWaveIsBoss = false;
 
-    this.hero.resetVitals();
+    this.resetPartyVitals();
+    this.enemyParty = [];
     this.encounter = null;
     this.announcedResult = false;
 
-    this.applyProgressionBonusesToHero();
+    this.applyProgressionBonusesToParty();
 
     if (!this.prepareNextWave()) {
       this.log("[Runtime] Failed to prepare first wave.");
@@ -504,10 +552,11 @@ export class SimulationRuntime {
 
   startAuto() {
     if (!this.encounter) {
-      if (!this.hero || !this.hero.isAlive) {
+      const hasActiveParty = this.party.some((member) => member.isAlive);
+      if (!hasActiveParty) {
         return;
       }
-      if (!this.currentWaveQueue.length) {
+      if (!this.currentWaveUnits.length) {
         if (!this.prepareNextWave()) {
           return;
         }
@@ -557,8 +606,9 @@ export class SimulationRuntime {
         }
       }
 
-      if (!this.bossEnraged && this.bossConfig && this.enemy && this.enemy.isAlive) {
-        const hpRatio = this.enemy.maxHealth > 0 ? this.enemy.health / this.enemy.maxHealth : 1;
+      const boss = this.enemyParty[0];
+      if (!this.bossEnraged && this.bossConfig && boss && boss.isAlive) {
+        const hpRatio = boss.maxHealth > 0 ? boss.health / boss.maxHealth : 1;
         if (hpRatio <= Math.max(0, Math.min(1, this.bossConfig.enrageHpPercent))) {
           this.applyBossEnrage();
         }
@@ -602,25 +652,27 @@ export class SimulationRuntime {
   }
 
   protected handleHeroVictory(summary: EncounterSummary) {
-    if (!this.hero) {
+    if (!this.party.length) {
       return;
     }
 
     if (summary.rewards?.xp) {
       const xp = summary.rewards.xp;
-      const levelsGained = this.hero.addExperience(xp);
-      const progressPct = (this.hero.experienceProgress * 100).toFixed(1);
-      this.log(
-        `[Runtime] Hero gains ${xp} XP (level ${this.hero.level}, ${progressPct}% to next).`
-      );
-      if (levelsGained > 0) {
-        this.log(`[Runtime] Hero advanced ${levelsGained} levels.`);
-      }
-    }
-
-    if (this.currentWaveQueue.length) {
-      this.startNextEncounter(true);
-      return;
+      const recipients = this.party.filter((member) => member.isAlive);
+      const baseShare = recipients.length ? Math.floor(xp / recipients.length) : xp;
+      const remainder = recipients.length ? xp - baseShare * recipients.length : 0;
+      recipients.forEach((member, index) => {
+        const gain = baseShare + (index < remainder ? 1 : 0);
+        const levelsGained = member.addExperience(gain);
+        const label = this.getHeroLabel(member);
+        const progressPct = (member.experienceProgress * 100).toFixed(1);
+        this.log(
+          `[Runtime] ${label} gains ${gain} XP (level ${member.level}, ${progressPct}% to next).`
+        );
+        if (levelsGained > 0) {
+          this.log(`[Runtime] ${label} advanced ${levelsGained} levels.`);
+        }
+      });
     }
 
     const wasBossWave = this.currentWaveIsBoss;
@@ -651,21 +703,21 @@ export class SimulationRuntime {
   }
 
   protected handleHeroDefeat() {
-    this.log("[Runtime] Hero defeated. Encounter paused.");
+    this.log("[Runtime] Party defeated. Encounter paused.");
     const bossWave = this.currentWaveIsBoss;
     this.stopAuto();
     this.encounter = null;
 
-    if (this.hero) {
-      this.hero.resetVitals();
-    }
+    this.resetPartyVitals();
+    this.enemyParty = [];
+    this.enemy = null;
 
     if (bossWave) {
       this.log(
         `[Runtime] Boss stands firm. Resetting stage ${this.stageIndex + 1} to wave 1.`
       );
       this.stageWaveCompleted = 0;
-      this.currentWaveQueue = [];
+      this.currentWaveUnits = [];
       this.currentWaveNumber = 0;
       this.currentEnemyLabel = "";
       this.currentWaveIsBoss = false;
@@ -676,33 +728,35 @@ export class SimulationRuntime {
   }
 
   protected startNextEncounter(autoStart = false) {
-    if (!this.hero || !this.hero.isAlive) {
+    const activeParty = this.party.filter((member) => member.isAlive);
+    if (!activeParty.length) {
       return;
     }
 
-    if (!this.currentWaveQueue.length) {
+    if (!this.currentWaveUnits.length) {
       if (!this.prepareNextWave()) {
         return;
       }
     }
 
-    const unit = this.currentWaveQueue.shift();
-    if (!unit) {
-      return;
-    }
+    this.enemyParty = this.currentWaveUnits.map((unit) => {
+      const foe = new Character(this.cloneData(unit.data));
+      foe.resetVitals();
+      return foe;
+    });
+    this.enemy = this.enemyParty[0] ?? null;
+    this.currentEnemyLabel = this.buildEnemyLabel(this.currentWaveUnits);
 
-    this.enemy = new Character(this.cloneData(unit.data));
-    this.enemy.resetVitals();
-    this.currentEnemyLabel = unit.label;
-
-    this.encounter = new EncounterLoop(this.sim, this.hero, this.enemy, {
+    this.encounter = new EncounterLoop(this.sim, this.party, this.enemyParty, {
       tickInterval: this.tickIntervalSeconds,
       rewardConfig: this.getRewardConfig(),
+      onLog: (message) => this.log(message),
     });
 
     this.announcedResult = false;
+    const enemyLabel = this.currentEnemyLabel || "Unknown foes";
     this.log(
-      `[Runtime] Stage ${this.stageIndex + 1} (${this.currentStageName}) — Wave ${this.currentWaveNumber}: ${unit.label}`
+      `[Runtime] Stage ${this.stageIndex + 1} (${this.currentStageName}) — Wave ${this.currentWaveNumber}: ${enemyLabel}`
     );
 
     if (autoStart || this.autoStart) {
@@ -710,21 +764,135 @@ export class SimulationRuntime {
     }
   }
 
-  protected ensureHero(fresh: boolean) {
-    if (!fresh && this.hero) {
-      return;
+  protected ensureParty(fresh: boolean) {
+    if (fresh) {
+      this.partyRoster.clear();
     }
 
-    const definition = this.heroes.find((hero) => hero.id === this.selectedHeroId);
-    if (!definition) {
-      this.log("[Runtime] No hero definition available to initialize.");
-      this.hero = null;
-      return;
+    const unlockedSlots = this.calculateUnlockedPartySize();
+    const activeIds = new Set(
+      this.selectedHeroIds.slice(0, unlockedSlots).filter((value): value is string => Boolean(value))
+    );
+    Array.from(this.partyRoster.keys()).forEach((id) => {
+      if (!activeIds.has(id)) {
+        this.partyRoster.delete(id);
+      }
+    });
+    const nextParty: Character[] = [];
+    for (let slot = 0; slot < unlockedSlots; slot += 1) {
+      const heroId = this.selectedHeroIds[slot];
+      if (!heroId) {
+        continue;
+      }
+
+      const definition = this.heroes.find((hero) => hero.id === heroId);
+      if (!definition) {
+        continue;
+      }
+
+      let character = this.partyRoster.get(heroId);
+      if (!character || fresh) {
+        character = new Character(this.cloneData(definition.data));
+        character.resetVitals();
+        this.partyRoster.set(heroId, character);
+      }
+      nextParty.push(character);
     }
 
-    this.hero = new Character(this.cloneData(definition.data));
-    this.appliedProgressionMultiplier = 1;
-    this.applyProgressionBonusesToHero();
+    this.party = nextParty;
+    this.hero = this.party[0] ?? null;
+    this.selectedHeroId = this.selectedHeroIds[0] ?? this.selectedHeroId ?? null;
+    this.applyProgressionBonusesToParty();
+  }
+
+  protected calculateUnlockedPartySize(): number {
+    let unlocked = 1;
+    const highestStage = Math.max(this.highestStageCleared, this.stageIndex + 1);
+    for (let index = 0; index < this.partySlotThresholds.length; index += 1) {
+      const requirement = this.partySlotThresholds[index];
+      if (highestStage >= requirement) {
+        unlocked = index + 1;
+      }
+    }
+    return Math.min(this.maxPartySize, Math.max(1, unlocked));
+  }
+
+  protected updatePartyUnlocks() {
+    if (!this.selectedHeroIds.length) {
+      this.selectedHeroIds = new Array(this.maxPartySize).fill(null);
+    }
+    const unlocked = this.calculateUnlockedPartySize();
+    for (let slot = 0; slot < unlocked; slot += 1) {
+      if (!this.selectedHeroIds[slot]) {
+        const definition = this.heroes[slot];
+        if (definition) {
+          this.selectedHeroIds[slot] = definition.id;
+        }
+      }
+    }
+  }
+
+  protected resetPartyVitals() {
+    this.party.forEach((member) => member.resetVitals());
+  }
+
+  protected buildEnemyLabel(units: EnemyUnit[]): string {
+    if (!units.length) {
+      return "";
+    }
+    if (units.length === 1) {
+      return units[0].label;
+    }
+    const counts = new Map<string, number>();
+    units.forEach((unit) => {
+      counts.set(unit.label, (counts.get(unit.label) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, count]) => (count > 1 ? `${count}x ${label}` : label))
+      .join(", ");
+  }
+
+  protected getHeroLabel(character: Character): string {
+    for (const [heroId, instance] of this.partyRoster.entries()) {
+      if (instance === character) {
+        const definition = this.heroes.find((hero) => hero.id === heroId);
+        return definition?.label ?? heroId;
+      }
+    }
+    if (character === this.hero) {
+      return "Hero";
+    }
+    return "Ally";
+  }
+
+  protected getPartySummary(): PartySummary {
+    if (!this.party.length) {
+      return {
+        size: 0,
+        alive: 0,
+        averageLevel: 0,
+        totalAttackPower: 0,
+        totalDps: 0,
+      };
+    }
+    const size = this.party.length;
+    const alive = this.party.filter((member) => member.isAlive).length;
+    const totalLevels = this.party.reduce((sum, member) => sum + member.level, 0);
+    const totalAttackPower = this.party.reduce(
+      (sum, member) => sum + member.attackPower,
+      0
+    );
+    const totalDps = this.party.reduce((sum, member) => {
+      const delay = member.getAttackDelaySeconds();
+      return sum + member.attackPower / Math.max(0.1, delay);
+    }, 0);
+    return {
+      size,
+      alive,
+      averageLevel: size ? totalLevels / size : 0,
+      totalAttackPower,
+      totalDps,
+    };
   }
 
   protected refreshHeroLoadout(resetVitals = false) {
@@ -825,14 +993,14 @@ export class SimulationRuntime {
     this.applyStageLoot(blueprint.lootTableId);
     this.currentWaveIsBoss = wave.isBoss;
 
-    this.currentWaveQueue = wave.enemies.map((enemy) => ({
+    this.currentWaveUnits = wave.enemies.map((enemy) => ({
       id: enemy.id,
       label: enemy.label,
       tier: enemy.tier,
       data: this.cloneData(enemy.data),
     }));
 
-    if (!this.currentWaveQueue.length) {
+    if (!this.currentWaveUnits.length) {
       return false;
     }
 
@@ -846,13 +1014,18 @@ export class SimulationRuntime {
       this.bossTimerRemaining = 0;
       this.bossEnraged = false;
     }
+    this.enemyParty = [];
+    this.enemy = null;
     return true;
   }
 
   protected completeWave() {
     this.stageWaveCompleted += 1;
     this.totalWavesCompleted += 1;
-    this.currentWaveQueue = [];
+    this.currentWaveUnits = [];
+    this.enemyParty = [];
+    this.enemy = null;
+    this.currentEnemyLabel = "";
     this.currentWaveIsBoss = false;
   }
 
@@ -948,11 +1121,15 @@ export class SimulationRuntime {
   }
 
   protected applyBossEnrage() {
-    if (!this.enemy || !this.bossConfig) {
+    if (!this.bossConfig) {
+      return;
+    }
+    const targets = this.enemyParty.length ? this.enemyParty : this.enemy ? [this.enemy] : [];
+    if (!targets.length) {
       return;
     }
     this.bossEnraged = true;
-    this.enemy.applyAttackMultiplier(this.bossConfig.enrageAttackMultiplier);
+    targets.forEach((foe) => foe.applyAttackMultiplier(this.bossConfig!.enrageAttackMultiplier));
     this.log("[Runtime] Boss enters an enraged frenzy! Attack power surges.");
     this.emitState();
   }
@@ -1013,22 +1190,27 @@ export class SimulationRuntime {
     }
     const normalizedBonus = Math.max(0, bonusPercent ?? 0);
     this.permanentStatMultiplier = 1 + this.clearedStages.size * normalizedBonus;
-    this.applyProgressionBonusesToHero();
+    this.updatePartyUnlocks();
+    this.ensureParty(false);
+    this.applyProgressionBonusesToParty();
     return isFirst;
   }
 
-  protected applyProgressionBonusesToHero() {
-    if (!this.hero) {
-      return;
-    }
+  protected applyProgressionBonusesToParty() {
     const targetMultiplier = this.permanentStatMultiplier;
     const diff = targetMultiplier / this.appliedProgressionMultiplier;
     if (Math.abs(diff - 1) < 1e-4) {
       return;
     }
-    this.hero.applyGlobalStatBonus(diff);
+    this.party.forEach((member) => {
+      member.applyGlobalStatBonus(diff);
+      member.updateStats();
+    });
+    if (this.party.length === 0 && this.hero) {
+      this.hero.applyGlobalStatBonus(diff);
+      this.hero.updateStats();
+    }
     this.appliedProgressionMultiplier = targetMultiplier;
-    this.hero.updateStats();
   }
 
   protected mergeEncounterRewards(

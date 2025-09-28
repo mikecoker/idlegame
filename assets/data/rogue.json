@@ -1,45 +1,98 @@
 {
   "baseStats": {
-    "strength": 15,
-    "agility": 10,
-    "dexterity": 10,
-    "stamina": 15,
-    "intelligence": 0,
-    "wisdom": 0,
-    "charisma": 5,
-    "defense": 40
+    "strength": 18,
+    "agility": 28,
+    "dexterity": 26,
+    "stamina": 18,
+    "intelligence": 8,
+    "wisdom": 8,
+    "charisma": 12,
+    "defense": 45
   },
   "derivedStats": {
-    "baseHitpoints": 30,
-    "baseMana": 0,
-    "attackPerStr": 2, 
-    "accPerStr": 4,
-    "evaPerAgi": 4,
-    "dexPerCrit": 3,
-    "acPerDef": 1,
-    "hpPerStamina": 4,
-    "manaPerIntOrWis": 0,
-    "baseDodge": 12,
-    "dodgePerAgi": 0.6,
-    "baseParry": 6,
-    "parryPerDex": 0.3,
-    "baseAttackDelay": 1.8,
-    "minAttackDelay": 0.5,
-    "attackDelayReductionPerAgi": 0.0125
+    "baseHitpoints": 60,
+    "baseMana": 18,
+    "attackPerStr": 2.8,
+    "accPerStr": 4.2,
+    "evaPerAgi": 4.5,
+    "dexPerCrit": 3.6,
+    "acPerDef": 1.5,
+    "hpPerStamina": 4.8,
+    "manaPerIntOrWis": 2.2,
+    "baseDodge": 14,
+    "dodgePerAgi": 0.65,
+    "baseParry": 7,
+    "parryPerDex": 0.32,
+    "baseAttackDelay": 1.6,
+    "minAttackDelay": 0.45,
+    "attackDelayReductionPerAgi": 0.012
   },
   "progression": {
     "initialLevel": 1,
-    "xp": {
-      "base": 90,
-      "perLevel": 45,
-      "exponent": 1.15
-    },
+    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
     "statGrowth": {
-      "strength": 2,
-      "agility": 2,
-      "dexterity": 2,
-      "stamina": 2,
-      "defense": 3
+      "strength": { "percent": 0.04 },
+      "agility": { "percent": 0.07 },
+      "dexterity": { "percent": 0.06 },
+      "stamina": { "percent": 0.04 },
+      "intelligence": { "percent": 0.02 },
+      "wisdom": { "percent": 0.02 },
+      "charisma": { "percent": 0.03 },
+      "defense": { "percent": 0.03 }
+    },
+    "vitalGrowth": {
+      "hitpoints": { "percent": 0.08 },
+      "mana": { "percent": 0.04 }
+    },
+    "evolutions": [
+      {
+        "tier": 1,
+        "requiredLevel": 10,
+        "statMultiplier": 1.5,
+        "essenceCost": 100,
+        "unlocks": ["fan-of-knives"]
+      },
+      {
+        "tier": 2,
+        "requiredLevel": 20,
+        "statMultiplier": 1.5,
+        "essenceCost": 400
+      },
+      {
+        "tier": 3,
+        "requiredLevel": 30,
+        "statMultiplier": 1.5,
+        "essenceCost": 900,
+        "unlocks": ["shadow-flurry"]
+      },
+      {
+        "tier": 4,
+        "requiredLevel": 50,
+        "statMultiplier": 1.5,
+        "essenceCost": 1600
+      }
+    ]
+  },
+  "abilities": [
+    {
+      "id": "fan-of-knives",
+      "name": "Fan of Knives",
+      "description": "Throws blades at nearby foes for 30% splash damage.",
+      "type": "area-damage",
+      "trigger": "onAttackHit",
+      "percentOfDamage": 0.3,
+      "maxTargets": 3,
+      "requiresTier": 1
+    },
+    {
+      "id": "shadow-flurry",
+      "name": "Shadow Flurry",
+      "description": "Storm of strikes lashes up to five enemies for 18% damage.",
+      "type": "area-damage",
+      "trigger": "onAttackHit",
+      "percentOfDamage": 0.18,
+      "maxTargets": 5,
+      "requiresTier": 3
     }
-  }
+  ]
 }

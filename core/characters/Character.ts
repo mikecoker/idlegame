@@ -8,6 +8,10 @@ import {
   StatBlockData,
   WeaponStatBlock,
 } from "../stats/StatBlock";
+import {
+  AbilityDefinition,
+  cloneAbilityDefinition,
+} from "./Abilities";
 
 const STAT_KEYS: (keyof StatBlockData)[] = [
   "strength",
@@ -20,16 +24,206 @@ const STAT_KEYS: (keyof StatBlockData)[] = [
   "defense",
 ];
 
+type StatKey = keyof StatBlockData;
+
+interface GrowthRule {
+  flat: number;
+  percent: number;
+}
+
+const ZERO_GROWTH: GrowthRule = { flat: 0, percent: 0 };
+
+export interface StatGrowthRuleConfig {
+  flat?: number;
+  percent?: number;
+}
+
+export interface ProgressionXpCurveData {
+  coefficient: number;
+  exponent: number;
+  offset?: number;
+}
+
+interface ProgressionXpCurveProfile {
+  coefficient: number;
+  exponent: number;
+  offset: number;
+}
+
+export interface VitalGrowthConfig {
+  hitpoints?: StatGrowthRuleConfig;
+  mana?: StatGrowthRuleConfig;
+}
+
+interface VitalGrowthProfile {
+  hitpoints: GrowthRule;
+  mana: GrowthRule;
+}
+
+export interface EvolutionTierData {
+  tier?: number;
+  requiredLevel: number;
+  statMultiplier: number;
+  essenceCost: number;
+  unlocks?: string[];
+}
+
+interface EvolutionTierProfile {
+  tier: number;
+  requiredLevel: number;
+  statMultiplier: number;
+  essenceCost: number;
+  unlocks: string[];
+}
+
+export type EvolutionTierDefinition = EvolutionTierProfile;
+
+function cloneDerivedStatsBlock(
+  block: DerivedStatsBlockData
+): DerivedStatsBlockData {
+  const clone = new DerivedStatsBlockData();
+  clone.baseHitpoints = block.baseHitpoints;
+  clone.baseMana = block.baseMana;
+  clone.attackPerStr = block.attackPerStr;
+  clone.accPerStr = block.accPerStr;
+  clone.evaPerAgi = block.evaPerAgi;
+  clone.dexPerCrit = block.dexPerCrit;
+  clone.acPerDef = block.acPerDef;
+  clone.hpPerStamina = block.hpPerStamina;
+  clone.manaPerIntOrWis = block.manaPerIntOrWis;
+  clone.baseDodge = block.baseDodge;
+  clone.dodgePerAgi = block.dodgePerAgi;
+  clone.baseParry = block.baseParry;
+  clone.parryPerDex = block.parryPerDex;
+  clone.baseAttackDelay = block.baseAttackDelay;
+  clone.minAttackDelay = block.minAttackDelay;
+  clone.attackDelayReductionPerAgi = block.attackDelayReductionPerAgi;
+  return clone;
+}
+
+function normalizeGrowthRule(input: unknown): GrowthRule {
+  if (typeof input === "number" && Number.isFinite(input)) {
+    return { flat: input, percent: 0 };
+  }
+  if (input && typeof input === "object") {
+    const source = input as Record<string, unknown>;
+    const flatRaw = source.flat ?? source.value ?? source.amount ?? 0;
+    const percentRaw =
+      source.percent ??
+      source.percentage ??
+      source.percentPerLevel ??
+      source.multiplier ??
+      0;
+    const flat = typeof flatRaw === "number" && Number.isFinite(flatRaw) ? flatRaw : 0;
+    const percent =
+      typeof percentRaw === "number" && Number.isFinite(percentRaw) ? percentRaw : 0;
+    return { flat, percent };
+  }
+  return { flat: 0, percent: 0 };
+}
+
+function createZeroGrowthRecord(): Record<StatKey, GrowthRule> {
+  const record = {} as Record<StatKey, GrowthRule>;
+  (STAT_KEYS as StatKey[]).forEach((key) => {
+    record[key] = { ...ZERO_GROWTH };
+  });
+  return record;
+}
+
+function normalizeVitalGrowth(config?: VitalGrowthConfig): VitalGrowthProfile {
+  return {
+    hitpoints: normalizeGrowthRule(config?.hitpoints),
+    mana: normalizeGrowthRule(config?.mana),
+  };
+}
+
+function normalizeEvolutionTiers(
+  source?: EvolutionTierData[]
+): EvolutionTierProfile[] {
+  if (!Array.isArray(source) || !source.length) {
+    return [];
+  }
+
+  const sorted = source.map((entry, index) => {
+    const tierRaw = entry.tier;
+    const tier =
+      typeof tierRaw === "number" && Number.isFinite(tierRaw)
+        ? Math.max(1, Math.floor(tierRaw))
+        : index + 1;
+    const requiredLevel = Math.max(1, Math.floor(entry.requiredLevel ?? 1));
+    const statMultiplier = Math.max(1, Number(entry.statMultiplier ?? 1));
+    const essenceCost = Math.max(0, Math.floor(entry.essenceCost ?? 0));
+    const unlocks = Array.isArray(entry.unlocks)
+      ? Array.from(
+          new Set(
+            entry.unlocks.filter((id): id is string => typeof id === "string" && id.length > 0)
+          )
+        )
+      : [];
+    return { tier, requiredLevel, statMultiplier, essenceCost, unlocks };
+  });
+
+  sorted.sort((a, b) => {
+    if (a.requiredLevel === b.requiredLevel) {
+      return a.tier - b.tier;
+    }
+    return a.requiredLevel - b.requiredLevel;
+  });
+
+  const result: EvolutionTierProfile[] = [];
+  const seenTiers = new Set<number>();
+  let nextTier = 1;
+  for (const entry of sorted) {
+    let tier = entry.tier;
+    while (seenTiers.has(tier)) {
+      tier += 1;
+    }
+    seenTiers.add(tier);
+    nextTier = tier + 1;
+    result.push({ ...entry, tier });
+  }
+  return result;
+}
+
+function normalizeXpCurve(
+  data?: ProgressionXpCurveData
+): ProgressionXpCurveProfile | undefined {
+  if (!data) {
+    return undefined;
+  }
+  const coefficient = Number(data.coefficient);
+  const exponent = Number(data.exponent);
+  if (!Number.isFinite(coefficient) || coefficient <= 0) {
+    return undefined;
+  }
+  if (!Number.isFinite(exponent) || exponent <= 0) {
+    return undefined;
+  }
+  const offsetRaw = Number(data.offset ?? 0);
+  const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
+  return {
+    coefficient,
+    exponent,
+    offset,
+  };
+}
+
 export interface ProgressionXpData {
   base: number;
   perLevel: number;
   exponent?: number;
 }
 
+type StatGrowthInput = Partial<Record<StatKey, StatGrowthRuleConfig | number>>;
+
 export interface ProgressionData {
   initialLevel?: number;
   xp?: ProgressionXpData;
-  statGrowth?: Partial<StatBlockData>;
+  xpCurve?: ProgressionXpCurveData;
+  statGrowth?: StatGrowthInput;
+  vitalGrowth?: VitalGrowthConfig;
+  evolutions?: EvolutionTierData[];
+  initialEvolutionTier?: number;
 }
 
 interface ProgressionProfile {
@@ -37,7 +231,12 @@ interface ProgressionProfile {
   baseXp: number;
   perLevel: number;
   exponent: number;
-  statGrowth: Partial<StatBlockData>;
+  xpCurve?: ProgressionXpCurveProfile;
+  statGrowth: Record<StatKey, GrowthRule>;
+  vitalGrowth: VitalGrowthProfile;
+  evolutions: EvolutionTierProfile[];
+  initialEvolutionTier: number;
+  maxEvolutionTier: number;
 }
 
 export interface CharacterProgressSnapshot {
@@ -48,12 +247,14 @@ export interface CharacterProgressSnapshot {
   currentMana: number;
   maxHealth: number;
   maxMana: number;
+  evolutionTier?: number;
 }
 
 export class CharacterData {
   public baseStats: StatBlockData;
   public derivedStats: DerivedStatsBlockData;
   public progression?: ProgressionData;
+  public abilities?: AbilityDefinition[];
 }
 
 export class Character {
@@ -63,7 +264,12 @@ export class Character {
   protected _progression: ProgressionProfile;
 
   protected _baseStats: StatBlock;
+  protected _baseStatsBase: StatBlockData;
   protected _derivedStatsBlock: DerivedStatsBlock;
+  protected _derivedStatsBase: DerivedStatsBlockData;
+  protected _abilityDefinitions: AbilityDefinition[] = [];
+  protected _currentEvolutionTier = 0;
+  protected _appliedEvolutionMultiplier = 1;
 
   protected _itemBonuses: StatBlock = new StatBlock();
   protected _buffBonuses: StatBlock = new StatBlock();
@@ -265,12 +471,20 @@ export class Character {
   constructor(charData: CharacterData) {
     this._baseStats = new StatBlock();
     this._baseStats.initialize(charData.baseStats);
+    this._baseStatsBase = this._baseStats.toData();
     this._derivedStatsBlock = new DerivedStatsBlock();
     this._derivedStatsBlock.initialize(charData.derivedStats);
+    this._derivedStatsBase = cloneDerivedStatsBlock(this._derivedStatsBlock);
 
     this._progression = this.createProgression(charData.progression);
     this._level = this._progression.initialLevel;
     this._experience = 0;
+
+    if (Array.isArray(charData.abilities)) {
+      this._abilityDefinitions = charData.abilities.map((ability) =>
+        cloneAbilityDefinition(ability)
+      );
+    }
 
     if (this._level > 1) {
       for (let level = 2; level <= this._level; level++) {
@@ -280,6 +494,7 @@ export class Character {
 
     this._derivedStats = new DerivedStats();
     this._experienceToNext = this.calculateXpForLevel(this._level);
+    this.updateEvolutionTier(this._progression.initialEvolutionTier, true);
     this.updateStats();
   }
 
@@ -360,28 +575,48 @@ export class Character {
     const exponentRaw = xpData?.exponent ?? 1.1;
     const exponent = Number.isFinite(exponentRaw) ? Math.max(0.5, exponentRaw) : 1.1;
 
-    const statGrowthSource = data?.statGrowth ?? {};
-    const statGrowth: Partial<StatBlockData> = {};
-    STAT_KEYS.forEach((key) => {
-      const raw = (statGrowthSource as Record<string, unknown>)[key];
-      if (raw !== undefined) {
-        const value = Number(raw);
-        if (Number.isFinite(value)) {
-          statGrowth[key] = value;
+    const statGrowthRecord = createZeroGrowthRecord();
+    if (data?.statGrowth) {
+      (STAT_KEYS as StatKey[]).forEach((key) => {
+        const raw = (data.statGrowth as Record<string, unknown>)[key];
+        if (raw !== undefined) {
+          statGrowthRecord[key] = normalizeGrowthRule(raw);
         }
-      }
-    });
+      });
+    }
+
+    const xpCurve = normalizeXpCurve(data?.xpCurve);
+    const vitalGrowth = normalizeVitalGrowth(data?.vitalGrowth);
+    const evolutions = normalizeEvolutionTiers(data?.evolutions);
+    const maxEvolutionTier = evolutions.reduce(
+      (acc, tier) => Math.max(acc, tier.tier),
+      0
+    );
+    const requestedInitialTier = Math.max(0, Math.floor(data?.initialEvolutionTier ?? 0));
+    const initialEvolutionTier = Math.min(requestedInitialTier, maxEvolutionTier);
 
     return {
       initialLevel,
       baseXp,
       perLevel,
       exponent,
-      statGrowth,
+      xpCurve,
+      statGrowth: statGrowthRecord,
+      vitalGrowth,
+      evolutions,
+      initialEvolutionTier,
+      maxEvolutionTier,
     };
   }
 
   protected calculateXpForLevel(level: number): number {
+    const xpCurve = this._progression.xpCurve;
+    if (xpCurve) {
+      const safeLevel = Math.max(1, level);
+      const xp =
+        xpCurve.coefficient * Math.pow(safeLevel, xpCurve.exponent) + xpCurve.offset;
+      return Math.max(1, Math.floor(xp));
+    }
     const { baseXp, perLevel, exponent } = this._progression;
     if (level <= 1) {
       return Math.max(1, baseXp);
@@ -392,10 +627,161 @@ export class Character {
   }
 
   protected applyStatGrowth() {
-    if (!this._progression.statGrowth) {
+    const deltas: Partial<StatBlockData> = {};
+    (STAT_KEYS as StatKey[]).forEach((key) => {
+      const rule = this._progression.statGrowth[key] ?? ZERO_GROWTH;
+      let delta = 0;
+      if (rule.flat) {
+        delta += rule.flat;
+      }
+      if (rule.percent) {
+        const baseline = this._baseStatsBase[key];
+        delta += baseline * rule.percent;
+      }
+      if (delta !== 0) {
+        deltas[key] = delta;
+      }
+    });
+
+    if (Object.keys(deltas).length) {
+      this._baseStats.applyDelta(deltas);
+    }
+    this.applyVitalGrowth();
+  }
+
+  protected applyVitalGrowth() {
+    const growth = this._progression.vitalGrowth;
+    if (!growth) {
       return;
     }
-    this._baseStats.applyDelta(this._progression.statGrowth);
+
+    const hpRule = growth.hitpoints;
+    if (hpRule) {
+      let delta = 0;
+      if (hpRule.flat) {
+        delta += hpRule.flat;
+      }
+      if (hpRule.percent) {
+        delta += this._derivedStatsBase.baseHitpoints * hpRule.percent;
+      }
+      if (delta !== 0) {
+        this._derivedStatsBlock.baseHitpoints = Math.max(
+          1,
+          this._derivedStatsBlock.baseHitpoints + delta
+        );
+      }
+    }
+
+    const manaRule = growth.mana;
+    if (manaRule) {
+      let delta = 0;
+      if (manaRule.flat) {
+        delta += manaRule.flat;
+      }
+      if (manaRule.percent) {
+        delta += this._derivedStatsBase.baseMana * manaRule.percent;
+      }
+      if (delta !== 0) {
+        this._derivedStatsBlock.baseMana = Math.max(
+          0,
+          this._derivedStatsBlock.baseMana + delta
+        );
+      }
+    }
+  }
+
+  public get evolutionTier(): number {
+    return this._currentEvolutionTier;
+  }
+
+  public get maxEvolutionTier(): number {
+    return this._progression.maxEvolutionTier;
+  }
+
+  public setEvolutionTier(tier: number): void {
+    this.updateEvolutionTier(tier, true);
+  }
+
+  public listEvolutionTiers(): EvolutionTierDefinition[] {
+    return this._progression.evolutions.map((tier) => ({ ...tier }));
+  }
+
+  protected updateEvolutionTier(targetTier: number, applyScaling: boolean) {
+    const clamped = Math.max(0, Math.min(targetTier, this._progression.maxEvolutionTier));
+    const targetMultiplier = this.calculateEvolutionMultiplier(clamped);
+
+    if (!applyScaling) {
+      this._currentEvolutionTier = clamped;
+      this._appliedEvolutionMultiplier = targetMultiplier;
+      return;
+    }
+
+    if (Math.abs(targetMultiplier - this._appliedEvolutionMultiplier) < 1e-4) {
+      this._currentEvolutionTier = clamped;
+      return;
+    }
+
+    const diff = targetMultiplier / this._appliedEvolutionMultiplier;
+    this._currentEvolutionTier = clamped;
+    this._appliedEvolutionMultiplier = targetMultiplier;
+
+    if (Math.abs(diff - 1) < 1e-4) {
+      return;
+    }
+
+    const deltas: Partial<StatBlockData> = {};
+    (STAT_KEYS as StatKey[]).forEach((key) => {
+      const current = this._baseStats[key];
+      const delta = current * (diff - 1);
+      if (delta !== 0) {
+        deltas[key] = delta;
+      }
+    });
+    if (Object.keys(deltas).length) {
+      this._baseStats.applyDelta(deltas);
+    }
+    this.applyEvolutionMultiplierToDerived(diff);
+    this.updateStats();
+  }
+
+  protected calculateEvolutionMultiplier(tier: number): number {
+    if (!this._progression.evolutions.length || tier <= 0) {
+      return 1;
+    }
+    return this._progression.evolutions.reduce((multiplier, entry) => {
+      if (entry.tier <= tier) {
+        return multiplier * Math.max(1, entry.statMultiplier);
+      }
+      return multiplier;
+    }, 1);
+  }
+
+  protected applyEvolutionMultiplierToDerived(multiplier: number) {
+    if (Math.abs(multiplier - 1) < 1e-4) {
+      return;
+    }
+    this._derivedStatsBlock.baseHitpoints *= multiplier;
+    this._derivedStatsBlock.baseMana *= multiplier;
+    this._derivedStatsBlock.attackPerStr *= multiplier;
+    this._derivedStatsBlock.accPerStr *= multiplier;
+    this._derivedStatsBlock.evaPerAgi *= multiplier;
+    this._derivedStatsBlock.dexPerCrit *= multiplier;
+    this._derivedStatsBlock.acPerDef *= multiplier;
+    this._derivedStatsBlock.hpPerStamina *= multiplier;
+    this._derivedStatsBlock.manaPerIntOrWis *= multiplier;
+  }
+
+  public listAbilityDefinitions(): AbilityDefinition[] {
+    return this._abilityDefinitions.map((ability) =>
+      cloneAbilityDefinition(ability)
+    );
+  }
+
+  public getUnlockedAbilities(): AbilityDefinition[] {
+    const tier = this._currentEvolutionTier;
+    return this._abilityDefinitions
+      .filter((ability) => (ability.requiresTier ?? 0) <= tier)
+      .map((ability) => cloneAbilityDefinition(ability));
   }
 
   public addExperience(amount: number): number {
@@ -434,6 +820,7 @@ export class Character {
       currentMana: this._curMana,
       maxHealth: this._maxHealth,
       maxMana: this._maxMana,
+      evolutionTier: this._currentEvolutionTier,
     };
   }
 
@@ -463,6 +850,12 @@ export class Character {
       sanitizedMaxMana,
       Math.max(0, snapshot.currentMana ?? sanitizedMaxMana)
     );
+
+    const evolutionTier = Math.max(
+      0,
+      Math.floor(snapshot.evolutionTier ?? this._currentEvolutionTier)
+    );
+    this.updateEvolutionTier(evolutionTier, false);
 
     this.updateStats();
   }

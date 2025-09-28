@@ -1,44 +1,110 @@
 {
   "baseStats": {
-    "strength": 15,
-    "agility": 10,
-    "dexterity": 10,
-    "stamina": 15,
-    "intelligence": 0,
-    "wisdom": 0,
-    "charisma": 5,
-    "defense": 50
+    "strength": 28,
+    "agility": 14,
+    "dexterity": 12,
+    "stamina": 32,
+    "intelligence": 6,
+    "wisdom": 6,
+    "charisma": 10,
+    "defense": 80
   },
   "derivedStats": {
-    "baseHitpoints": 40,
-    "baseMana": 0,
-    "attackPerStr": 3, 
-    "accPerStr": 2,
-    "evaPerAgi": 2,
-    "dexPerCrit": 1,
-    "acPerDef": 2,
-    "hpPerStamina": 4,
-    "manaPerIntOrWis": 0,
+    "baseHitpoints": 110,
+    "baseMana": 12,
+    "attackPerStr": 3.4,
+    "accPerStr": 2.6,
+    "evaPerAgi": 2.5,
+    "dexPerCrit": 1.8,
+    "acPerDef": 2.6,
+    "hpPerStamina": 7.5,
+    "manaPerIntOrWis": 1.5,
     "baseDodge": 6,
-    "dodgePerAgi": 0.3,
-    "baseParry": 10,
-    "parryPerDex": 0.35,
-    "baseAttackDelay": 2.2,
-    "minAttackDelay": 0.8,
-    "attackDelayReductionPerAgi": 0.0075
+    "dodgePerAgi": 0.35,
+    "baseParry": 8,
+    "parryPerDex": 0.28,
+    "baseAttackDelay": 2.0,
+    "minAttackDelay": 0.7,
+    "attackDelayReductionPerAgi": 0.009
   },
   "progression": {
     "initialLevel": 1,
-    "xp": {
-      "base": 110,
-      "perLevel": 60,
-      "exponent": 1.1
-    },
+    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
     "statGrowth": {
-      "strength": 3,
-      "stamina": 3,
-      "defense": 4,
-      "agility": 1
+      "strength": { "percent": 0.06 },
+      "agility": { "percent": 0.04 },
+      "dexterity": { "percent": 0.03 },
+      "stamina": { "percent": 0.07 },
+      "intelligence": { "percent": 0.01 },
+      "wisdom": { "percent": 0.01 },
+      "charisma": { "percent": 0.02 },
+      "defense": { "percent": 0.06 }
+    },
+    "vitalGrowth": {
+      "hitpoints": { "percent": 0.12 },
+      "mana": { "percent": 0.03 }
+    },
+    "evolutions": [
+      {
+        "tier": 1,
+        "requiredLevel": 10,
+        "statMultiplier": 1.5,
+        "essenceCost": 100,
+        "unlocks": ["cleave"]
+      },
+      {
+        "tier": 2,
+        "requiredLevel": 20,
+        "statMultiplier": 1.5,
+        "essenceCost": 400,
+        "unlocks": ["battle-heart"]
+      },
+      {
+        "tier": 3,
+        "requiredLevel": 30,
+        "statMultiplier": 1.5,
+        "essenceCost": 900,
+        "unlocks": ["earthsplitter"]
+      },
+      {
+        "tier": 4,
+        "requiredLevel": 50,
+        "statMultiplier": 1.5,
+        "essenceCost": 1600
+      }
+    ]
+  },
+  "abilities": [
+    {
+      "id": "cleave",
+      "name": "Cleave",
+      "description": "Wide swings cleave two nearby foes for 35% of the original hit.",
+      "type": "area-damage",
+      "trigger": "onAttackHit",
+      "percentOfDamage": 0.35,
+      "maxTargets": 2,
+      "requiresTier": 1
+    },
+    {
+      "id": "battle-heart",
+      "name": "Battle Heart",
+      "description": "A steady aura mends allies for 2% health every 8 seconds.",
+      "type": "healing-aura",
+      "trigger": "onTick",
+      "healPercent": 0.02,
+      "intervalSeconds": 8,
+      "target": "allies",
+      "requiresTier": 2
+    },
+    {
+      "id": "earthsplitter",
+      "name": "Earthsplitter",
+      "description": "Devastating slams send shockwaves to four enemies for 20% damage.",
+      "type": "area-damage",
+      "trigger": "onAttackHit",
+      "percentOfDamage": 0.2,
+      "maxTargets": 4,
+      "requiresTier": 3
     }
-  }
+  ]
 }

@@ -9,7 +9,22 @@ export {
   type RewardEquipmentItem,
 } from "./combat/Encounter";
 export { Character, CharacterData } from "./characters/Character";
-export type { CharacterProgressSnapshot } from "./characters/Character";
+export type {
+  CharacterProgressSnapshot,
+  EvolutionTierData,
+  EvolutionTierDefinition,
+  ProgressionData,
+  ProgressionXpCurveData,
+  ProgressionXpData,
+  StatGrowthRuleConfig,
+  VitalGrowthConfig,
+} from "./characters/Character";
+export type {
+  AbilityDefinition,
+  AbilityTrigger,
+  AreaDamageAbility,
+  HealingAuraAbility,
+} from "./characters/Abilities";
 export * from "./items/constants";
 export * from "./items/Item";
 export * from "./items/ItemDefinition";
@@ -18,7 +33,7 @@ export * from "./progression/Stage";
 export * from "./progression/ProgressionConfig";
 export { StageGenerator } from "./progression/StageGenerator";
 export type { StagePreview } from "./progression/StageGenerator";
-export type { ProgressionSnapshot } from "./runtime/SimulationRuntime";
+export type { ProgressionSnapshot, PartySummary } from "./runtime/SimulationRuntime";
 export * from "./economy/LootTable";
 export * from "./data/DataSource";
 export { SimulationRuntime } from "./runtime/SimulationRuntime";

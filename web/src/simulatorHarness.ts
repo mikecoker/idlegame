@@ -2,6 +2,7 @@ import {
   SimulationRuntime,
   SimulationState,
   ProgressionSnapshot,
+  PartySummary,
 } from "@core/runtime/SimulationRuntime";
 import {
   EncounterEvent,
@@ -97,6 +98,7 @@ interface PersistedState {
   rewards: EncounterRewards;
   lastRewards?: EncounterRewards;
   heroProgress?: CharacterProgressSnapshot;
+  partyProgress?: Record<string, CharacterProgressSnapshot>;
   history?: EncounterHistoryEntry[];
   historyCounter?: number;
   inventorySnapshot?: InventorySnapshot;
@@ -325,6 +327,10 @@ export class SimulatorHarness {
   protected dataSource: WebDataSource | null = null;
   protected hero: Character | null = null;
   protected enemy: Character | null = null;
+  protected party: Character[] = [];
+  protected enemyParty: Character[] = [];
+  protected partyIds: (string | null)[] = [];
+  protected partySummary: PartySummary | null = null;
   protected lastSummary: EncounterSummary | null = null;
 
   protected heroOptions: Preset[] = [];
@@ -378,7 +384,7 @@ export class SimulatorHarness {
   protected permanentBonusPercent = 0;
 
   protected tickIntervalSeconds = 0.1;
-  protected pendingSourceProgress?: CharacterProgressSnapshot;
+  protected pendingPartyProgress: Map<string, CharacterProgressSnapshot> = new Map();
   protected autoStart = false;
 
   protected history: EncounterHistoryEntry[] = [];
@@ -761,8 +767,14 @@ export class SimulatorHarness {
     const previousStage = previousState?.stageIndex ?? -1;
 
     this.runtimeState = state;
-    this.hero = state.hero ?? null;
-    this.enemy = state.enemy ?? null;
+
+    this.party = state.party ?? [];
+    this.partyIds = state.partyIds ?? [];
+    this.enemyParty = state.enemyParty ?? [];
+    this.partySummary = state.partySummary ?? null;
+
+    this.hero = this.party[0] ?? state.hero ?? null;
+    this.enemy = this.enemyParty[0] ?? state.enemy ?? null;
 
     this.stageIndex = state.stageIndex;
     this.ensureStageListCoverage(this.stageIndex);
@@ -791,19 +803,22 @@ export class SimulatorHarness {
       this.lastSummary = null;
     }
 
-    const heroChanged = this.hero && this.hero !== previousHero;
-    if (heroChanged) {
-      if (this.pendingSourceProgress && this.hero) {
-        this.hero.restoreProgress(this.pendingSourceProgress);
-        this.pendingSourceProgress = undefined;
-      }
-      this.hero?.resetVitals();
-      this.renderStatsTable();
+    if (this.pendingPartyProgress.size && this.party.length) {
+      this.party.forEach((member, index) => {
+        const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null);
+        if (heroId && this.pendingPartyProgress.has(heroId)) {
+          member.restoreProgress(this.pendingPartyProgress.get(heroId)!);
+          this.pendingPartyProgress.delete(heroId);
+        }
+      });
     }
 
-    if (!this.hero) {
-      this.renderStatsTable();
+    const heroChanged = this.hero && this.hero !== previousHero;
+    if (heroChanged && this.hero) {
+      this.hero.resetVitals();
     }
+
+    this.renderStatsTable();
 
     this.updateStagePreview();
     this.refreshStatus();
@@ -821,8 +836,10 @@ export class SimulatorHarness {
     }
 
     events.forEach((event) => {
-      const attackerIsHero = this.hero ? event.attacker === this.hero : false;
-      const defenderIsHero = this.hero ? event.defender === this.hero : false;
+      const attackerIndex = this.party.findIndex((member) => member === event.attacker);
+      const defenderIndex = this.party.findIndex((member) => member === event.defender);
+      const attackerIsHero = attackerIndex >= 0;
+      const defenderIsHero = defenderIndex >= 0;
       const bucket = attackerIsHero ? this.telemetry.hero : this.telemetry.enemy;
 
       bucket.attempts += 1;
@@ -845,8 +862,12 @@ export class SimulatorHarness {
           break;
       }
 
-      const attackerLabel = attackerIsHero ? "Hero" : "Enemy";
-      const defenderLabel = defenderIsHero ? "Hero" : "Enemy";
+      const attackerLabel = attackerIsHero
+        ? this.getPartyMemberLabel(attackerIndex)
+        : "Enemy";
+      const defenderLabel = defenderIsHero
+        ? this.getPartyMemberLabel(defenderIndex)
+        : "Enemy";
       const stamp = event.timestamp.toFixed(2);
       const hand = event.hand === "main" ? "main" : "off";
       switch (event.result) {
@@ -1751,14 +1772,6 @@ export class SimulatorHarness {
       this.pushLog(`[Loot] Shards: boss-shard x${shardQty}`);
     }
 
-    if (this.hero && rewards.xp > 0) {
-      const levels = this.hero.addExperience(rewards.xp);
-      if (levels > 0) {
-        this.renderStatsTable();
-        this.syncInventoryView();
-      }
-    }
-
     this.rewardClaimed = true;
     this.renderRewards();
     this.persistState();
@@ -1830,12 +1843,56 @@ export class SimulatorHarness {
   }
 
   protected renderStatsTable() {
-    if (!this.hero) {
-      this.listeners.onStats?.([{ label: "Status", value: "No hero", raw: 0 }]);
+    if (!this.hero && !this.party.length) {
+      this.listeners.onStats?.([{ label: "Status", value: "No party", raw: 0 }]);
       return;
     }
 
-    const rows = this.buildStatRows(this.hero);
+    const rows: StatRow[] = [];
+
+    if (this.partySummary) {
+      rows.push({
+        label: "Party Members",
+        value: `${this.partySummary.alive}/${this.partySummary.size}`,
+        raw: this.partySummary.size,
+      });
+      rows.push({
+        label: "Party Avg Level",
+        value: this.partySummary.averageLevel.toFixed(2),
+        raw: this.partySummary.averageLevel,
+      });
+      rows.push({
+        label: "Party Attack Power",
+        value: this.partySummary.totalAttackPower.toFixed(1),
+        raw: this.partySummary.totalAttackPower,
+      });
+      rows.push({
+        label: "Party DPS",
+        value: this.partySummary.totalDps.toFixed(2),
+        raw: this.partySummary.totalDps,
+      });
+    }
+
+    this.party.forEach((member, index) => {
+      const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId ?? "Leader" : `Hero ${index + 1}`);
+      const label = this.heroOptions.find((preset) => preset.id === heroId)?.label ?? heroId ?? `Hero ${index + 1}`;
+      rows.push({ label: `${label} Level`, value: member.level.toString(), raw: member.level });
+      rows.push({
+        label: `${label} HP`,
+        value: `${Math.round(member.health)} / ${Math.round(member.maxHealth)}`,
+        raw: member.health,
+      });
+      rows.push({
+        label: `${label} Attack Power`,
+        value: member.attackPower.toFixed(2),
+        raw: member.attackPower,
+      });
+    });
+
+    if (this.hero) {
+      rows.push(...this.buildStatRows(this.hero));
+    }
+
     this.listeners.onStats?.(rows);
   }
 
@@ -1890,6 +1947,18 @@ export class SimulatorHarness {
       return "-";
     }
     return (total / samples).toFixed(2);
+  }
+
+  protected getPartyMemberLabel(index: number): string {
+    if (index < 0 || index >= this.party.length) {
+      return "Hero";
+    }
+    const heroId = this.partyIds[index] ?? (index === 0 ? this.selectedHeroId : null);
+    if (heroId) {
+      const preset = this.heroOptions.find((option) => option.id === heroId);
+      return preset?.label ?? heroId;
+    }
+    return `Hero ${index + 1}`;
   }
 
   protected formatMaterials(materials: Record<string, number>): string {
@@ -1975,6 +2044,24 @@ export class SimulatorHarness {
 
       const progression = this.runtime ? this.runtime.getProgressionSnapshot() : null;
 
+      const partyProgress: Record<string, CharacterProgressSnapshot> = {};
+      if (this.party.length) {
+        this.party.forEach((member, index) => {
+          const assignedId = this.partyIds[index] ?? (index === 0 ? heroId : null);
+          if (assignedId) {
+            partyProgress[assignedId] = member.serializeProgress();
+          }
+        });
+      } else if (this.hero) {
+        partyProgress[heroId] = this.hero.serializeProgress();
+      }
+
+      const primaryHeroProgress = this.selectedHeroId
+        ? partyProgress[this.selectedHeroId] ?? (this.hero ? this.hero.serializeProgress() : undefined)
+        : this.hero
+        ? this.hero.serializeProgress()
+        : undefined;
+
       const state: PersistedState = {
         version: 3,
         heroId,
@@ -1984,7 +2071,8 @@ export class SimulatorHarness {
         lootTableId: this.selectedLootId ?? undefined,
         rewards: normalizeRewards(this.totalRewards),
         lastRewards: normalizeRewards(this.lastRewards),
-        heroProgress: this.hero.serializeProgress(),
+        heroProgress: primaryHeroProgress,
+        partyProgress: Object.keys(partyProgress).length ? partyProgress : undefined,
         history: this.history.slice(-40),
         historyCounter: this.historyCounter,
         inventorySnapshot: snapshot,
@@ -2034,7 +2122,19 @@ export class SimulatorHarness {
       this.totalRewards = normalizeRewards(state.rewards);
       this.lastRewards = normalizeRewards(state.lastRewards);
 
-      this.pendingSourceProgress = state.heroProgress;
+      this.pendingPartyProgress.clear();
+      if (state.partyProgress) {
+        Object.entries(state.partyProgress).forEach(([id, snapshot]) => {
+          if (snapshot) {
+            this.pendingPartyProgress.set(id, snapshot);
+          }
+        });
+      } else if (state.heroProgress) {
+        const targetId = this.selectedHeroId ?? state.heroId;
+        if (targetId) {
+          this.pendingPartyProgress.set(targetId, state.heroProgress);
+        }
+      }
       this.resumeAfterVictory = !!state.resumeAfterVictory;
       this.updateStagePreview();
 

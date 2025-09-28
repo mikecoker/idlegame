@@ -13,6 +13,17 @@ const PROGRESSION_PATH = "assets/data/encounters/progression.json";
 const PROGRESSION_CONFIG_PATH = "assets/data/progression/config.json";
 const LOOT_MANIFEST_PATH = "assets/data/loot/manifest.json";
 
+const STAT_KEYS = Object.freeze([
+  "strength",
+  "agility",
+  "dexterity",
+  "stamina",
+  "intelligence",
+  "wisdom",
+  "charisma",
+  "defense",
+]);
+
 const ZHeroManifest = z.object({
   presets: z
     .array(
@@ -23,6 +34,139 @@ const ZHeroManifest = z.object({
       })
     )
     .min(1, "At least one hero preset must be defined"),
+});
+
+const ZStatKey = z.enum([...STAT_KEYS]);
+
+const ZGrowthRule = z
+  .union([
+    z.number({ invalid_type_error: "Growth values must be numeric" }),
+    z
+      .object({
+        flat: z.number().optional(),
+        percent: z.number().optional(),
+      })
+      .refine(
+        (value) => value.flat !== undefined || value.percent !== undefined,
+        {
+          message: "Growth objects must specify at least 'flat' or 'percent'",
+        }
+      ),
+  ])
+  .transform((value) => {
+    if (typeof value === "number") {
+      return { flat: value, percent: 0 };
+    }
+    return {
+      flat: Number.isFinite(value.flat) ? value.flat : 0,
+      percent: Number.isFinite(value.percent) ? value.percent : 0,
+    };
+  });
+
+const ZStatGrowth = z.record(ZStatKey, ZGrowthRule);
+
+const ZXpLegacy = z
+  .object({
+    base: z.number().nonnegative(),
+    perLevel: z.number().nonnegative(),
+    exponent: z.number().positive().optional(),
+  })
+  .optional();
+
+const ZXpCurve = z
+  .object({
+    coefficient: z.number().positive(),
+    exponent: z.number().positive(),
+    offset: z.number().optional(),
+  })
+  .optional();
+
+const ZEvolutionTier = z.object({
+  tier: z.number().int().min(1).optional(),
+  requiredLevel: z.number().int().min(1),
+  statMultiplier: z.number().min(1),
+  essenceCost: z.number().int().nonnegative(),
+  unlocks: z.array(z.string().min(1)).optional(),
+});
+
+const ZProgressionData = z
+  .object({
+    initialLevel: z.number().int().min(1).optional(),
+    xp: ZXpLegacy,
+    xpCurve: ZXpCurve,
+    statGrowth: ZStatGrowth.optional(),
+    vitalGrowth: z
+      .object({
+        hitpoints: ZGrowthRule.optional(),
+        mana: ZGrowthRule.optional(),
+      })
+      .optional(),
+    evolutions: z.array(ZEvolutionTier).optional(),
+    initialEvolutionTier: z.number().int().nonnegative().optional(),
+  })
+  .optional();
+
+const ZAbilityTrigger = z.enum(["onAttackHit", "onTick"]);
+
+const ZAbilityBase = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
+  trigger: ZAbilityTrigger,
+  requiresTier: z.number().int().nonnegative().optional(),
+  cooldownSeconds: z.number().nonnegative().optional(),
+});
+
+const ZAreaDamageAbility = ZAbilityBase.extend({
+  type: z.literal("area-damage"),
+  percentOfDamage: z.number().min(0),
+  maxTargets: z.number().int().min(1),
+  falloffPercent: z.number().min(0).max(1).optional(),
+});
+
+const ZHealingAuraAbility = ZAbilityBase.extend({
+  type: z.literal("healing-aura"),
+  healPercent: z.number().min(0),
+  intervalSeconds: z.number().positive(),
+  target: z.enum(["self", "allies"]).optional(),
+});
+
+const ZAbilityDefinition = z.discriminatedUnion("type", [
+  ZAreaDamageAbility,
+  ZHealingAuraAbility,
+]);
+
+const ZStatBlock = z.object(
+  STAT_KEYS.reduce((shape, key) => {
+    shape[key] = z.number({ invalid_type_error: `Stat '${key}' must be numeric` });
+    return shape;
+  }, {})
+);
+
+const ZDerivedStats = z.object({
+  baseHitpoints: z.number(),
+  baseMana: z.number(),
+  attackPerStr: z.number(),
+  accPerStr: z.number(),
+  evaPerAgi: z.number(),
+  dexPerCrit: z.number(),
+  acPerDef: z.number(),
+  hpPerStamina: z.number(),
+  manaPerIntOrWis: z.number(),
+  baseDodge: z.number().optional(),
+  dodgePerAgi: z.number().optional(),
+  baseParry: z.number().optional(),
+  parryPerDex: z.number().optional(),
+  baseAttackDelay: z.number().optional(),
+  minAttackDelay: z.number().optional(),
+  attackDelayReductionPerAgi: z.number().optional(),
+});
+
+const ZHeroData = z.object({
+  baseStats: ZStatBlock,
+  derivedStats: ZDerivedStats,
+  progression: ZProgressionData,
+  abilities: z.array(ZAbilityDefinition).optional(),
 });
 
 const ZEnemyManifest = z.object({
@@ -187,14 +331,59 @@ async function validateHeroManifest() {
   const manifest = ZHeroManifest.parse(data);
   await Promise.all(
     manifest.presets.map(async (preset) => {
+      let heroRaw;
       try {
-        await loadJson(preset.path);
+        heroRaw = await loadJson(preset.path);
       } catch (err) {
         throw new Error(`Preset '${preset.id}' references missing file ${preset.path}: ${err.message}`);
       }
+      let hero;
+      try {
+        hero = ZHeroData.parse(heroRaw);
+      } catch (err) {
+        throw new Error(`Hero '${preset.id}' failed validation: ${err.message}`);
+      }
+      validateHeroProgression(hero, preset.id);
     })
   );
   return `Validated ${manifest.presets.length} hero presets.`;
+}
+
+function validateHeroProgression(hero, heroId) {
+  const abilities = Array.isArray(hero.abilities) ? hero.abilities : [];
+  const abilityIds = new Set(abilities.map((ability) => ability.id));
+  const progression = hero.progression;
+  if (!progression) {
+    return;
+  }
+
+  const evolutions = Array.isArray(progression.evolutions)
+    ? progression.evolutions.filter(Boolean)
+    : [];
+  const maxTier = evolutions.reduce((max, tier) => {
+    const tierValue = tier.tier ?? 0;
+    return Math.max(max, tierValue);
+  }, 0);
+
+  abilities.forEach((ability) => {
+    const requiredTier = ability.requiresTier ?? 0;
+    if (requiredTier > maxTier) {
+      throw new Error(
+        `Hero '${heroId}' ability '${ability.id}' requires tier ${requiredTier}, but only ${maxTier} tiers are defined.`
+      );
+    }
+  });
+
+  evolutions.forEach((tier, index) => {
+    const tierLabel = tier.tier ?? index + 1;
+    (tier.unlocks ?? []).forEach((abilityId) => {
+      if (!abilityIds.has(abilityId)) {
+        throw new Error(
+          `Hero '${heroId}' evolution tier ${tierLabel} references unknown ability '${abilityId}'.`
+        );
+      }
+    });
+  });
 }
 
 async function validateEnemyManifest() {

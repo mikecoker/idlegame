@@ -1,27 +1,27 @@
 {
   "baseStats": {
-    "strength": 20,
+    "strength": 10,
     "agility": 12,
-    "dexterity": 12,
-    "stamina": 28,
-    "intelligence": 4,
-    "wisdom": 4,
-    "charisma": 8,
-    "defense": 60
+    "dexterity": 10,
+    "stamina": 24,
+    "intelligence": 18,
+    "wisdom": 22,
+    "charisma": 14,
+    "defense": 40
   },
   "derivedStats": {
-    "baseHitpoints": 80,
-    "baseMana": 10,
-    "attackPerStr": 3,
-    "accPerStr": 3,
-    "evaPerAgi": 3,
-    "dexPerCrit": 2,
-    "acPerDef": 2,
-    "hpPerStamina": 6,
-    "manaPerIntOrWis": 2,
-    "baseDodge": 8,
-    "dodgePerAgi": 0.4,
-    "baseParry": 6,
+    "baseHitpoints": 70,
+    "baseMana": 40,
+    "attackPerStr": 2.2,
+    "accPerStr": 3.2,
+    "evaPerAgi": 2.8,
+    "dexPerCrit": 2.4,
+    "acPerDef": 1.8,
+    "hpPerStamina": 5.5,
+    "manaPerIntOrWis": 3.5,
+    "baseDodge": 10,
+    "dodgePerAgi": 0.5,
+    "baseParry": 4,
     "parryPerDex": 0.25,
     "baseAttackDelay": 1.9,
     "minAttackDelay": 0.6,
@@ -29,17 +29,72 @@
   },
   "progression": {
     "initialLevel": 1,
-    "xp": {
-      "base": 120,
-      "perLevel": 60,
-      "exponent": 1.2
-    },
+    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
     "statGrowth": {
-      "strength": 3,
-      "agility": 2,
-      "dexterity": 2,
-      "stamina": 4,
-      "defense": 4
+      "strength": { "percent": 0.03 },
+      "agility": { "percent": 0.04 },
+      "dexterity": { "percent": 0.03 },
+      "stamina": { "percent": 0.05 },
+      "intelligence": { "percent": 0.06 },
+      "wisdom": { "percent": 0.07 },
+      "charisma": { "percent": 0.04 },
+      "defense": { "percent": 0.04 }
+    },
+    "vitalGrowth": {
+      "hitpoints": { "percent": 0.1 },
+      "mana": { "percent": 0.08 }
+    },
+    "evolutions": [
+      {
+        "tier": 1,
+        "requiredLevel": 10,
+        "statMultiplier": 1.5,
+        "essenceCost": 100,
+        "unlocks": ["radiant-aura"]
+      },
+      {
+        "tier": 2,
+        "requiredLevel": 20,
+        "statMultiplier": 1.5,
+        "essenceCost": 400
+      },
+      {
+        "tier": 3,
+        "requiredLevel": 30,
+        "statMultiplier": 1.5,
+        "essenceCost": 900,
+        "unlocks": ["blessing-wave"]
+      },
+      {
+        "tier": 4,
+        "requiredLevel": 50,
+        "statMultiplier": 1.5,
+        "essenceCost": 1600
+      }
+    ]
+  },
+  "abilities": [
+    {
+      "id": "radiant-aura",
+      "name": "Radiant Aura",
+      "description": "Periodic pulses heal all allies for 3% of their maximum health.",
+      "type": "healing-aura",
+      "trigger": "onTick",
+      "healPercent": 0.03,
+      "intervalSeconds": 5,
+      "target": "allies",
+      "requiresTier": 1
+    },
+    {
+      "id": "blessing-wave",
+      "name": "Blessing Wave",
+      "description": "Every 12 seconds a larger wave restores 6% of ally health.",
+      "type": "healing-aura",
+      "trigger": "onTick",
+      "healPercent": 0.06,
+      "intervalSeconds": 12,
+      "target": "allies",
+      "requiresTier": 3
     }
-  }
+  ]
 }
