@@ -1,38 +1,25 @@
 {
   "id": "mythic-helm",
-  "name": "Mythic Helm",
-  "tier": "boss",
+  "name": "Aegis Helm",
+  "tier": "mythic",
   "type": "armor",
   "slot": "Head",
-  "power": 32,
   "stats": {
-    "defense": 16,
-    "strength": 3,
-    "dexterity": 2
+    "stamina": 16,
+    "defense": 45,
+    "wisdom": 6
   },
   "armor": {
-    "armor": 30
+    "armor": 120
   },
-  "socketSlots": 2,
+  "socketSlots": 3,
+  "maxUpgradeLevel": 6,
   "upgrades": [
-    {
-      "materials": {
-        "armor-essence": 6,
-        "mana-crystal": 2
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 8,
-        "glacial-core": 1
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 10,
-        "glacial-core": 1,
-        "storm-sigil": 1
-      }
-    }
+    { "materials": { "ancient-cloth": 4, "armor-essence": 6, "mana-crystal": 2 } },
+    { "materials": { "ancient-cloth": 6, "armor-essence": 7, "mana-crystal": 3 } },
+    { "materials": { "ancient-cloth": 8, "armor-essence": 8, "mana-crystal": 4 } },
+    { "materials": { "armor-essence": 9, "mana-crystal": 5, "weapon-essence": 5 } },
+    { "materials": { "armor-essence": 10, "mana-crystal": 6, "weapon-essence": 6 } },
+    { "materials": { "armor-essence": 12, "mana-crystal": 6, "weapon-essence": 8 } }
   ]
 }

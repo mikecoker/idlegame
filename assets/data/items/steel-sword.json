@@ -1,38 +1,27 @@
 {
   "id": "steel-sword",
-  "name": "Steel Longsword",
-  "tier": "medium",
+  "name": "Knight's Edge",
+  "tier": "veteran",
   "type": "weapon",
   "slot": "MainHand",
-  "power": 20,
+  "power": 68,
   "stats": {
-    "strength": 4,
-    "dexterity": 2
+    "strength": 12,
+    "dexterity": 5,
+    "stamina": 6
   },
   "weapon": {
-    "minDamage": 16,
-    "maxDamage": 26,
-    "delay": 2.0
+    "minDamage": 32,
+    "maxDamage": 48,
+    "delay": 1.8
   },
+  "socketSlots": 2,
+  "maxUpgradeLevel": 5,
   "upgrades": [
-    {
-      "materials": {
-        "weapon-essence": 3,
-        "enchanted-ore": 2
-      }
-    },
-    {
-      "materials": {
-        "weapon-essence": 5,
-        "enchanted-ore": 4,
-        "ancient-cloth": 2
-      }
-    },
-    {
-      "materials": {
-        "weapon-essence": 8,
-        "mana-crystal": 2
-      }
-    }
+    { "materials": { "iron-ore": 12, "enchanted-ore": 2, "weapon-essence": 3 } },
+    { "materials": { "iron-ore": 16, "enchanted-ore": 4, "weapon-essence": 4 } },
+    { "materials": { "enchanted-ore": 6, "weapon-essence": 5, "armor-essence": 3 } },
+    { "materials": { "enchanted-ore": 8, "weapon-essence": 6, "mana-crystal": 1 } },
+    { "materials": { "weapon-essence": 8, "mana-crystal": 2 } }
   ]
 }

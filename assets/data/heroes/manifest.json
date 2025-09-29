@@ -1,7 +1,7 @@
 {
   "presets": [
-    { "id": "hero", "label": "Hero", "path": "assets/data/hero.json" },
-    { "id": "rogue", "label": "Rogue", "path": "assets/data/rogue.json" },
-    { "id": "warrior", "label": "Warrior", "path": "assets/data/warrior.json" }
+    { "id": "warrior", "label": "Vanguard Warrior", "path": "assets/data/warrior.json" },
+    { "id": "arcanist", "label": "Arcane Conduit", "path": "assets/data/rogue.json" },
+    { "id": "cleric", "label": "Dawn Cleric", "path": "assets/data/hero.json" }
   ]
 }

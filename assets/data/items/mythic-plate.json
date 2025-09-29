@@ -1,38 +1,25 @@
 {
   "id": "mythic-plate",
-  "name": "Mythic Plate",
-  "tier": "boss",
+  "name": "Aegis Cuirass",
+  "tier": "mythic",
   "type": "armor",
   "slot": "Chest",
-  "power": 36,
   "stats": {
-    "defense": 24,
-    "stamina": 8
+    "stamina": 24,
+    "strength": 12,
+    "defense": 60
   },
   "armor": {
-    "armor": 48
+    "armor": 170
   },
-  "socketSlots": 2,
+  "socketSlots": 3,
+  "maxUpgradeLevel": 6,
   "upgrades": [
-    {
-      "materials": {
-        "armor-essence": 7,
-        "mana-crystal": 2
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 9,
-        "glacial-core": 1,
-        "storm-sigil": 1
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 12,
-        "glacial-core": 2,
-        "storm-sigil": 2
-      }
-    }
+    { "materials": { "ancient-cloth": 6, "armor-essence": 6, "mana-crystal": 3 } },
+    { "materials": { "ancient-cloth": 8, "armor-essence": 8, "mana-crystal": 4 } },
+    { "materials": { "ancient-cloth": 10, "armor-essence": 9, "mana-crystal": 5 } },
+    { "materials": { "armor-essence": 10, "mana-crystal": 6, "weapon-essence": 6 } },
+    { "materials": { "armor-essence": 12, "mana-crystal": 7, "weapon-essence": 7 } },
+    { "materials": { "armor-essence": 14, "mana-crystal": 8, "weapon-essence": 8 } }
   ]
 }

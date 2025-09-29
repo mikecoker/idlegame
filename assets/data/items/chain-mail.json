@@ -1,36 +1,24 @@
 {
   "id": "chain-mail",
-  "name": "Chain Mail",
-  "tier": "medium",
+  "name": "Guardian Brigandine",
+  "tier": "veteran",
   "type": "armor",
   "slot": "Chest",
-  "power": 20,
   "stats": {
-    "defense": 12,
-    "stamina": 4
+    "stamina": 12,
+    "strength": 6,
+    "defense": 32
   },
   "armor": {
-    "armor": 24
+    "armor": 74
   },
-  "socketSlots": 1,
+  "socketSlots": 2,
+  "maxUpgradeLevel": 5,
   "upgrades": [
-    {
-      "materials": {
-        "armor-essence": 4,
-        "enchanted-ore": 2
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 6,
-        "ancient-cloth": 4
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 8,
-        "mana-crystal": 3
-      }
-    }
+    { "materials": { "enchanted-ore": 3, "iron-ore": 12, "armor-essence": 3 } },
+    { "materials": { "enchanted-ore": 4, "armor-essence": 5, "weapon-essence": 3 } },
+    { "materials": { "enchanted-ore": 6, "armor-essence": 6, "mana-crystal": 1 } },
+    { "materials": { "armor-essence": 8, "mana-crystal": 2 } },
+    { "materials": { "armor-essence": 9, "weapon-essence": 5, "mana-crystal": 2 } }
   ]
 }

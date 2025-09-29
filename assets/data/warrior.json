@@ -1,48 +1,48 @@
 {
   "baseStats": {
-    "strength": 28,
-    "agility": 14,
-    "dexterity": 12,
-    "stamina": 32,
-    "intelligence": 6,
-    "wisdom": 6,
-    "charisma": 10,
-    "defense": 80
+    "strength": 34,
+    "agility": 18,
+    "dexterity": 16,
+    "stamina": 36,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 8,
+    "defense": 110
   },
   "derivedStats": {
-    "baseHitpoints": 110,
-    "baseMana": 12,
-    "attackPerStr": 3.4,
-    "accPerStr": 2.6,
-    "evaPerAgi": 2.5,
-    "dexPerCrit": 1.8,
-    "acPerDef": 2.6,
-    "hpPerStamina": 7.5,
-    "manaPerIntOrWis": 1.5,
+    "baseHitpoints": 150,
+    "baseMana": 35,
+    "attackPerStr": 4.1,
+    "accPerStr": 2.8,
+    "evaPerAgi": 2.2,
+    "dexPerCrit": 2.0,
+    "acPerDef": 3.1,
+    "hpPerStamina": 9.5,
+    "manaPerIntOrWis": 1.2,
     "baseDodge": 6,
-    "dodgePerAgi": 0.35,
-    "baseParry": 8,
-    "parryPerDex": 0.28,
-    "baseAttackDelay": 2.0,
-    "minAttackDelay": 0.7,
-    "attackDelayReductionPerAgi": 0.009
+    "dodgePerAgi": 0.28,
+    "baseParry": 12,
+    "parryPerDex": 0.35,
+    "baseAttackDelay": 2.05,
+    "minAttackDelay": 0.65,
+    "attackDelayReductionPerAgi": 0.008
   },
   "progression": {
     "initialLevel": 1,
-    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
+    "xpCurve": { "coefficient": 120, "exponent": 1.5 },
     "statGrowth": {
-      "strength": { "percent": 0.06 },
-      "agility": { "percent": 0.04 },
-      "dexterity": { "percent": 0.03 },
-      "stamina": { "percent": 0.07 },
-      "intelligence": { "percent": 0.01 },
-      "wisdom": { "percent": 0.01 },
+      "strength": { "percent": 0.07 },
+      "agility": { "percent": 0.045 },
+      "dexterity": { "percent": 0.04 },
+      "stamina": { "percent": 0.085 },
+      "intelligence": { "percent": 0.015 },
+      "wisdom": { "percent": 0.02 },
       "charisma": { "percent": 0.02 },
-      "defense": { "percent": 0.06 }
+      "defense": { "percent": 0.075 }
     },
     "vitalGrowth": {
-      "hitpoints": { "percent": 0.12 },
-      "mana": { "percent": 0.03 }
+      "hitpoints": { "percent": 0.15 },
+      "mana": { "percent": 0.04 }
     },
     "evolutions": [
       {
@@ -50,14 +50,14 @@
         "requiredLevel": 10,
         "statMultiplier": 1.5,
         "essenceCost": 100,
-        "unlocks": ["cleave"]
+        "unlocks": ["cleave-strike"]
       },
       {
         "tier": 2,
         "requiredLevel": 20,
         "statMultiplier": 1.5,
         "essenceCost": 400,
-        "unlocks": ["battle-heart"]
+        "unlocks": ["guardians-roar"]
       },
       {
         "tier": 3,
@@ -76,34 +76,38 @@
   },
   "abilities": [
     {
-      "id": "cleave",
-      "name": "Cleave",
-      "description": "Wide swings cleave two nearby foes for 35% of the original hit.",
+      "id": "cleave-strike",
+      "name": "Cleave Strike",
+      "description": "Sweeping blows carve through two additional foes for 45% damage (reduced by 30%).",
       "type": "area-damage",
       "trigger": "onAttackHit",
-      "percentOfDamage": 0.35,
+      "percentOfDamage": 0.45,
       "maxTargets": 2,
+      "falloffPercent": 0.7,
+      "cooldownSeconds": 4,
       "requiresTier": 1
     },
     {
-      "id": "battle-heart",
-      "name": "Battle Heart",
-      "description": "A steady aura mends allies for 2% health every 8 seconds.",
+      "id": "guardians-roar",
+      "name": "Guardian's Roar",
+      "description": "A rallying bellow mends allies for 1.5% health every 6 seconds.",
       "type": "healing-aura",
       "trigger": "onTick",
-      "healPercent": 0.02,
-      "intervalSeconds": 8,
+      "healPercent": 0.015,
+      "intervalSeconds": 6,
       "target": "allies",
       "requiresTier": 2
     },
     {
       "id": "earthsplitter",
       "name": "Earthsplitter",
-      "description": "Devastating slams send shockwaves to four enemies for 20% damage.",
+      "description": "Crushing impacts cascade to four extra enemies for 30% damage.",
       "type": "area-damage",
       "trigger": "onAttackHit",
-      "percentOfDamage": 0.2,
+      "percentOfDamage": 0.3,
       "maxTargets": 4,
+      "falloffPercent": 0.55,
+      "cooldownSeconds": 6,
       "requiresTier": 3
     }
   ]

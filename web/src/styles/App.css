@@ -307,6 +307,13 @@ body {
   width: 100%;
 }
 
+.paperdoll-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(219, 234, 255, 0.92);
+  margin-bottom: 8px;
+}
+
 .paperdoll-avatar-card {
   position: relative;
   padding: 24px;
@@ -524,6 +531,16 @@ body {
 .content-grid > .equipment-panel,
 .content-grid > .crafting-panel {
   grid-column: 1 / -1;
+}
+
+.inventory-active-hero {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: rgba(192, 220, 255, 0.85);
+}
+
+.loadout-selector {
+  max-width: 260px;
 }
 
 @media (max-width: 1280px) {

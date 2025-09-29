@@ -1,39 +1,28 @@
 {
   "id": "dragonslayer-sword",
-  "name": "Dragonslayer Blade",
-  "tier": "boss",
+  "name": "Dragonbone Cleaver",
+  "tier": "mythic",
   "type": "weapon",
   "slot": "MainHand",
-  "power": 35,
+  "power": 120,
   "stats": {
-    "strength": 8,
-    "dexterity": 4
+    "strength": 20,
+    "dexterity": 12,
+    "stamina": 10
   },
   "weapon": {
-    "minDamage": 28,
-    "maxDamage": 44,
-    "delay": 1.8
+    "minDamage": 55,
+    "maxDamage": 84,
+    "delay": 1.65
   },
-  "socketSlots": 2,
+  "socketSlots": 3,
+  "maxUpgradeLevel": 6,
   "upgrades": [
-    {
-      "materials": {
-        "weapon-essence": 6,
-        "mana-crystal": 2
-      }
-    },
-    {
-      "materials": {
-        "weapon-essence": 8,
-        "storm-sigil": 1
-      }
-    },
-    {
-      "materials": {
-        "weapon-essence": 10,
-        "glacial-core": 1,
-        "storm-sigil": 1
-      }
-    }
+    { "materials": { "enchanted-ore": 6, "weapon-essence": 6, "mana-crystal": 2 } },
+    { "materials": { "enchanted-ore": 8, "weapon-essence": 7, "mana-crystal": 2 } },
+    { "materials": { "mana-crystal": 3, "weapon-essence": 8, "armor-essence": 5 } },
+    { "materials": { "mana-crystal": 4, "weapon-essence": 9, "ancient-cloth": 4 } },
+    { "materials": { "weapon-essence": 10, "ancient-cloth": 6, "mana-crystal": 5 } },
+    { "materials": { "weapon-essence": 12, "mana-crystal": 6, "armor-essence": 6 } }
   ]
 }

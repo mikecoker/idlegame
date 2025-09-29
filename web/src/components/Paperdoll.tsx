@@ -12,6 +12,7 @@ interface PaperdollProps {
   resolveItem: (itemId: string) => ItemDefinition | null;
   stats: StatRow[];
   onUnequip?: (slot: EquippedSlotKey) => void;
+  heroLabel?: string;
 }
 
 const SLOT_ORDER: Array<{ key: EquippedSlotKey; icon: string; label: string }> = [
@@ -21,9 +22,16 @@ const SLOT_ORDER: Array<{ key: EquippedSlotKey; icon: string; label: string }> =
   { key: "OffHand", icon: "🛡", label: "Off Hand" },
 ];
 
-const Paperdoll: FC<PaperdollProps> = ({ equipped, resolveItem, stats, onUnequip }) => {
+const Paperdoll: FC<PaperdollProps> = ({
+  equipped,
+  resolveItem,
+  stats,
+  onUnequip,
+  heroLabel,
+}) => {
   return (
     <div className="paperdoll">
+      {heroLabel ? <header className="paperdoll-header">{heroLabel}</header> : null}
       <div className="paperdoll-avatar-card">
         <div className="paperdoll-avatar" aria-hidden>
           <div className="avatar-glow" />

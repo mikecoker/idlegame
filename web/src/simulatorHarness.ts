@@ -110,6 +110,7 @@ interface PersistedState {
   statBonusMultiplier?: number;
   progressionSnapshot?: ProgressionSnapshot;
   partyOrder?: Array<string | null>;
+  gearHeroId?: string;
   timestamp: number;
 }
 
@@ -178,6 +179,7 @@ const resolveDataUrl = (relativePath: string) => {
 };
 
 const STORAGE_KEY = "idle-eq-harness-state-v2";
+const DEFAULT_GEAR_HERO_ID = "__primary__";
 const RARITY_MULTIPLIERS: Record<ItemRarity, number> = {
   common: 1,
   uncommon: 1.1,
@@ -390,6 +392,11 @@ export class SimulatorHarness {
     Head: null,
     Chest: null,
   };
+  protected equippedItemsByHero: Record<
+    string,
+    Record<EquippedSlotKey, OwnedEquipment | null>
+  > = {};
+  protected activeGearHeroId: string | null = null;
   protected consumables: Record<string, number> = {};
   protected equipmentInventory: OwnedEquipment[] = [];
   protected selectedEquipmentRecipeId: string | null = null;
@@ -706,13 +713,9 @@ export class SimulatorHarness {
     }
     try {
       const snapshot = this.runtime.getInventorySnapshot();
-      this.inventorySnapshot = {
-        equipped: { ...(snapshot.equipped ?? {}) },
-        inventory: snapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [],
-        materials: { ...(snapshot.materials ?? {}) },
-        consumables: { ...(snapshot.consumables ?? {}) },
-      };
-      this.applyInventorySnapshot(this.inventorySnapshot);
+      const cloned = this.cloneInventorySnapshot(snapshot);
+      this.inventorySnapshot = cloned;
+      this.applyInventorySnapshot(cloned);
       this.syncInventoryView();
     } catch (err) {
       console.warn("[Harness] Failed to refresh inventory snapshot", err);
@@ -720,25 +723,118 @@ export class SimulatorHarness {
   }
 
   protected applyInventorySnapshot(snapshot: InventorySnapshot) {
-    const defaults: Record<EquippedSlotKey, OwnedEquipment | null> = {
-      MainHand: null,
-      OffHand: null,
-      Head: null,
-      Chest: null,
-    };
+    const source = snapshot.equippedByHero ??
+      (snapshot.equipped ? { [DEFAULT_GEAR_HERO_ID]: snapshot.equipped } : {});
 
-    Object.entries(snapshot.equipped ?? {}).forEach(([slot, owned]) => {
-      if (slot in defaults) {
-        defaults[slot as EquippedSlotKey] = owned ? this.cloneOwnedEquipment(owned) : null;
+    this.equippedItemsByHero = {};
+    const entries = Object.entries(source);
+    if (!entries.length) {
+      this.equippedItemsByHero[DEFAULT_GEAR_HERO_ID] = this.createEmptyLoadout();
+    } else {
+      entries.forEach(([heroId, slots]) => {
+        const loadout = this.createEmptyLoadout();
+        Object.entries(slots ?? {}).forEach(([slot, owned]) => {
+          if (slot in loadout) {
+            loadout[slot as EquippedSlotKey] = owned ? this.cloneOwnedEquipment(owned) : null;
+          }
+        });
+        this.equippedItemsByHero[heroId] = loadout;
+      });
+    }
+
+    if (!this.activeGearHeroId || !this.equippedItemsByHero[this.activeGearHeroId]) {
+      this.activeGearHeroId = this.determineDefaultGearHeroId();
+    }
+    if (!this.activeGearHeroId || !this.equippedItemsByHero[this.activeGearHeroId]) {
+      const firstHeroId = Object.keys(this.equippedItemsByHero)[0] ?? DEFAULT_GEAR_HERO_ID;
+      if (!this.equippedItemsByHero[firstHeroId]) {
+        this.equippedItemsByHero[firstHeroId] = this.createEmptyLoadout();
       }
-    });
+      this.activeGearHeroId = firstHeroId;
+    }
 
-    this.equippedItems = defaults;
+    this.equippedItems = this.cloneHeroLoadout(this.activeGearHeroId);
     this.equipmentInventory = (snapshot.inventory ?? []).map((item) =>
       this.cloneOwnedEquipment(item)
     );
     this.materialsStock = { ...(snapshot.materials ?? {}) };
     this.consumables = { ...(snapshot.consumables ?? {}) };
+  }
+
+  protected determineDefaultGearHeroId(preferred?: string | null): string | null {
+    if (preferred && this.equippedItemsByHero[preferred]) {
+      return preferred;
+    }
+    if (this.selectedHeroId && this.equippedItemsByHero[this.selectedHeroId]) {
+      return this.selectedHeroId;
+    }
+    const partyCandidate = this.partyIds.find(
+      (id): id is string => Boolean(id) && Boolean(this.equippedItemsByHero[id!])
+    );
+    if (partyCandidate) {
+      return partyCandidate;
+    }
+    const keys = Object.keys(this.equippedItemsByHero);
+    return keys[0] ?? null;
+  }
+
+  protected getHeroLoadoutMap(heroId?: string | null): Record<EquippedSlotKey, OwnedEquipment | null> {
+    const key = this.determineDefaultGearHeroId(heroId);
+    if (key && this.equippedItemsByHero[key]) {
+      return this.equippedItemsByHero[key];
+    }
+    if (!this.equippedItemsByHero[DEFAULT_GEAR_HERO_ID]) {
+      this.equippedItemsByHero[DEFAULT_GEAR_HERO_ID] = this.createEmptyLoadout();
+    }
+    return this.equippedItemsByHero[DEFAULT_GEAR_HERO_ID];
+  }
+
+  protected findEquippedOwner(
+    instanceId: string
+  ): { heroId: string; slot: EquippedSlotKey } | null {
+    for (const [heroId, slots] of Object.entries(this.equippedItemsByHero)) {
+      for (const slot of Object.keys(slots) as EquippedSlotKey[]) {
+        const owned = slots[slot];
+        if (owned && owned.instanceId === instanceId) {
+          return { heroId, slot };
+        }
+      }
+    }
+    return null;
+  }
+
+  protected cloneHeroLoadout(
+    heroId: string | null,
+    overrides: Partial<Record<EquippedSlotKey, OwnedEquipment | null>> = {}
+  ): Record<EquippedSlotKey, OwnedEquipment | null> {
+    const source = this.getHeroLoadoutMap(heroId);
+    const base: Record<EquippedSlotKey, OwnedEquipment | null> = {
+      MainHand: source.MainHand ? this.cloneOwnedEquipment(source.MainHand) : null,
+      OffHand: source.OffHand ? this.cloneOwnedEquipment(source.OffHand) : null,
+      Head: source.Head ? this.cloneOwnedEquipment(source.Head) : null,
+      Chest: source.Chest ? this.cloneOwnedEquipment(source.Chest) : null,
+    };
+
+    (Object.keys(overrides) as EquippedSlotKey[]).forEach((slot) => {
+      const override = overrides[slot];
+      base[slot] = override ? this.cloneOwnedEquipment(override) : null;
+    });
+
+    return base;
+  }
+
+  protected getHeroProgressSnapshot(heroId: string): CharacterProgressSnapshot | null {
+    const partyIndex = this.partyIds.findIndex((id) => id === heroId);
+    if (partyIndex >= 0 && this.party[partyIndex]) {
+      return this.party[partyIndex].serializeProgress();
+    }
+    if (heroId === this.selectedHeroId && this.hero) {
+      return this.hero.serializeProgress();
+    }
+    if (this.pendingPartyProgress.has(heroId)) {
+      return this.pendingPartyProgress.get(heroId)!;
+    }
+    return null;
   }
 
   protected syncInventoryView() {
@@ -1168,30 +1264,42 @@ export class SimulatorHarness {
     };
   }
 
-  protected cloneLoadout(
-    overrides: Partial<Record<EquippedSlotKey, OwnedEquipment | null>> = {}
-  ): Record<EquippedSlotKey, OwnedEquipment | null> {
-    const base: Record<EquippedSlotKey, OwnedEquipment | null> = {
-      MainHand: this.equippedItems.MainHand ? this.cloneOwnedEquipment(this.equippedItems.MainHand) : null,
-      OffHand: this.equippedItems.OffHand ? this.cloneOwnedEquipment(this.equippedItems.OffHand) : null,
-      Head: this.equippedItems.Head ? this.cloneOwnedEquipment(this.equippedItems.Head) : null,
-      Chest: this.equippedItems.Chest ? this.cloneOwnedEquipment(this.equippedItems.Chest) : null,
+  protected createEmptyLoadout(): Record<EquippedSlotKey, OwnedEquipment | null> {
+    return {
+      MainHand: null,
+      OffHand: null,
+      Head: null,
+      Chest: null,
     };
+  }
 
-    (Object.keys(overrides) as EquippedSlotKey[]).forEach((slot) => {
-      const override = overrides[slot];
-      base[slot] = override ? this.cloneOwnedEquipment(override) : null;
+  protected cloneEquippedSlotMap(
+    slots: Record<string, OwnedEquipment | null> | undefined
+  ): Record<string, OwnedEquipment | null> {
+    const clone: Record<string, OwnedEquipment | null> = {};
+    if (!slots) {
+      return clone;
+    }
+    Object.entries(slots).forEach(([slot, owned]) => {
+      clone[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
     });
+    return clone;
+  }
 
-    return base;
+  protected cloneLoadout(
+    overrides: Partial<Record<EquippedSlotKey, OwnedEquipment | null>> = {},
+    heroId?: string | null
+  ): Record<EquippedSlotKey, OwnedEquipment | null> {
+    return this.cloneHeroLoadout(heroId ?? this.activeGearHeroId, overrides);
   }
 
   protected createHeroClone(
-    loadout: Record<EquippedSlotKey, OwnedEquipment | null>
+    loadout: Record<EquippedSlotKey, OwnedEquipment | null>,
+    heroId?: string | null
   ): Character | null {
-    const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id;
-    const preset = heroId
-      ? this.heroOptions.find((option) => option.id === heroId) ?? this.heroOptions[0]
+    const targetHeroId = heroId ?? this.activeGearHeroId ?? this.selectedHeroId ?? this.determineDefaultGearHeroId();
+    const preset = targetHeroId
+      ? this.heroOptions.find((option) => option.id === targetHeroId) ?? this.heroOptions[0]
       : this.heroOptions[0];
 
     if (!preset) {
@@ -1199,7 +1307,7 @@ export class SimulatorHarness {
     }
 
     const clone = new Character(this.cloneData(preset.data));
-    const progress = this.hero?.serializeProgress();
+    const progress = targetHeroId ? this.getHeroProgressSnapshot(targetHeroId) : null;
     if (progress) {
       clone.restoreProgress(progress);
     }
@@ -1221,6 +1329,10 @@ export class SimulatorHarness {
 
     clone.resetVitals();
     return clone;
+  }
+
+  protected cloneInventorySnapshot(snapshot: InventorySnapshot): InventorySnapshot {
+    return JSON.parse(JSON.stringify(snapshot)) as InventorySnapshot;
   }
 
   protected createEquipment(def: ItemDefinition, owned?: OwnedEquipment | null): EquipmentItem | null {
@@ -1380,7 +1492,9 @@ export class SimulatorHarness {
       return false;
     }
 
-    const result = this.runtime.equipFromInventory(instanceId);
+    const result = this.runtime.equipFromInventory(instanceId, {
+      heroId: this.activeGearHeroId,
+    });
     if (
       result.success ||
       result.inventoryChanged ||
@@ -1399,7 +1513,9 @@ export class SimulatorHarness {
     if (!this.runtime) {
       return false;
     }
-    const result = this.runtime.equipFirstMatching(itemId);
+    const result = this.runtime.equipFirstMatching(itemId, {
+      heroId: this.activeGearHeroId,
+    });
     if (
       result.success ||
       result.inventoryChanged ||
@@ -1441,23 +1557,19 @@ export class SimulatorHarness {
     if (inventoryItem) {
       return inventoryItem;
     }
-    const slot = this.findEquippedSlot(instanceId);
-    if (slot) {
-      return this.equippedItems[slot] ?? null;
+    const owner = this.findEquippedOwner(instanceId);
+    if (owner) {
+      return this.equippedItemsByHero[owner.heroId]?.[owner.slot] ?? null;
     }
     return null;
   }
 
   protected findEquippedSlot(instanceId: string): EquippedSlotKey | null {
-    for (const [slot, owned] of Object.entries(this.equippedItems) as Array<[
-      EquippedSlotKey,
-      OwnedEquipment | null
-    ]>) {
-      if (owned && owned.instanceId === instanceId) {
-        return slot;
-      }
+    const owner = this.findEquippedOwner(instanceId);
+    if (owner && owner.heroId === this.activeGearHeroId) {
+      return owner.slot;
     }
-    return null;
+    return owner ? owner.slot : null;
   }
 
   protected getUpgradeMaterials(def: ItemDefinition | undefined, owned: OwnedEquipment): Record<string, number> | null {
@@ -1595,6 +1707,9 @@ export class SimulatorHarness {
   }
 
   protected canSalvage(instanceId: string): boolean {
+    if (this.findEquippedOwner(instanceId)) {
+      return false;
+    }
     return this.equipmentInventory.some((item) => item.instanceId === instanceId);
   }
 
@@ -2178,34 +2293,21 @@ export class SimulatorHarness {
     try {
       const runtimeSnapshot = this.runtime ? this.runtime.getInventorySnapshot() : null;
       if (runtimeSnapshot) {
-        this.inventorySnapshot = {
-          equipped: { ...(runtimeSnapshot.equipped ?? {}) },
-          inventory: runtimeSnapshot.inventory?.map((item) => this.cloneOwnedEquipment(item)) ?? [],
-          materials: { ...(runtimeSnapshot.materials ?? {}) },
-          consumables: { ...(runtimeSnapshot.consumables ?? {}) },
-        };
+        this.inventorySnapshot = this.cloneInventorySnapshot(runtimeSnapshot);
       }
 
-      const baseSnapshot = this.inventorySnapshot ?? {
-        equipped: {},
-        inventory: [],
-        materials: {},
-        consumables: {},
-      };
+      const baseSnapshot : InventorySnapshot = this.inventorySnapshot
+        ? this.cloneInventorySnapshot(this.inventorySnapshot)
+        : {
+            equippedByHero: { [DEFAULT_GEAR_HERO_ID]: this.createEmptyLoadout() },
+            inventory: [],
+            materials: {},
+            consumables: {},
+          };
 
-      const snapshot: InventorySnapshot = {
-        equipped: {},
-        inventory: [],
-        materials: { ...(baseSnapshot.materials ?? {}) },
-        consumables: { ...(baseSnapshot.consumables ?? {}) },
-      };
-
-      Object.entries(baseSnapshot.equipped ?? {}).forEach(([slot, owned]) => {
-        snapshot.equipped[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
-      });
-
-      snapshot.inventory = (baseSnapshot.inventory ?? []).map((item) =>
-        this.cloneOwnedEquipment(item)
+      const snapshot = this.cloneInventorySnapshot(baseSnapshot);
+      snapshot.equipped = this.cloneEquippedSlotMap(
+        this.getHeroLoadoutMap(this.activeGearHeroId)
       );
 
       const heroId = this.selectedHeroId ?? this.heroOptions[0]?.id ?? "";
@@ -2253,6 +2355,7 @@ export class SimulatorHarness {
         clearedStages: progression ? [...progression.clearedStageIds] : undefined,
         statBonusMultiplier: progression?.statBonusMultiplier,
         progressionSnapshot: progression ?? undefined,
+        gearHeroId: this.activeGearHeroId ?? undefined,
         timestamp: Date.now(),
       };
 
@@ -2326,26 +2429,29 @@ export class SimulatorHarness {
       this.historyCounter = state.historyCounter ?? this.history.length;
       this.renderHistory();
       const sourceSnapshot = state.inventorySnapshot ?? null;
-      const snapshot: InventorySnapshot = {
-        equipped: {},
-        inventory: [],
-        materials: { ...(sourceSnapshot?.materials ?? {}) },
-        consumables: { ...(sourceSnapshot?.consumables ?? {}) },
-      };
-
-      Object.entries(sourceSnapshot?.equipped ?? {}).forEach(([slot, owned]) => {
-        snapshot.equipped[slot] = owned ? this.cloneOwnedEquipment(owned) : null;
-      });
-
-      snapshot.inventory = (sourceSnapshot?.inventory ?? []).map((item) =>
-        this.cloneOwnedEquipment(item)
-      );
+      let snapshot: InventorySnapshot;
+      if (sourceSnapshot) {
+        snapshot = this.cloneInventorySnapshot(sourceSnapshot);
+        if (!snapshot.equippedByHero && snapshot.equipped) {
+          snapshot.equippedByHero = {
+            [DEFAULT_GEAR_HERO_ID]: this.cloneEquippedSlotMap(snapshot.equipped),
+          };
+        }
+      } else {
+        snapshot = {
+          equippedByHero: { [DEFAULT_GEAR_HERO_ID]: this.createEmptyLoadout() },
+          inventory: [],
+          materials: {},
+          consumables: {},
+        };
+      }
 
       if (this.runtime) {
         this.runtime.setInventorySnapshot(snapshot);
       }
-      this.inventorySnapshot = snapshot;
-      this.applyInventorySnapshot(snapshot);
+      this.activeGearHeroId = state.gearHeroId ?? this.activeGearHeroId;
+      this.inventorySnapshot = this.cloneInventorySnapshot(snapshot);
+      this.applyInventorySnapshot(this.inventorySnapshot);
       this.syncInventoryView();
 
       const progressionSnapshot =
@@ -2382,11 +2488,12 @@ export class SimulatorHarness {
       return null;
     }
     const def = this.itemDefs.get(owned.itemId);
-    const slot = this.findEquippedSlot(instanceId);
+    const owner = this.findEquippedOwner(instanceId);
+    const slot = owner?.heroId === this.activeGearHeroId ? (owner.slot as EquippedSlotKey) : null;
     const upgrade = this.describeUpgrade(def, owned);
     const socket = this.describeSocket(owned);
     const salvageBase = this.describeSalvage(def, owned);
-    const canSalvage = this.canSalvage(instanceId);
+    const canSalvage = !owner && this.canSalvage(instanceId);
 
     const salvage: ActionDescriptor = {
       label: salvageBase.label,
@@ -2397,11 +2504,22 @@ export class SimulatorHarness {
     return {
       instanceId,
       slot,
-      isEquipped: slot !== null,
+      isEquipped: Boolean(owner),
       upgrade,
       salvage,
       socket,
     };
+  }
+
+  setActiveGearHero(heroId: string | null) {
+    const resolved = this.determineDefaultGearHeroId(heroId ?? undefined);
+    this.activeGearHeroId = resolved;
+    this.equippedItems = this.cloneHeroLoadout(this.activeGearHeroId);
+    this.syncInventoryView();
+  }
+
+  getActiveGearHeroId(): string | null {
+    return this.activeGearHeroId;
   }
 
   equipFromInventory(instanceId: string): boolean {
@@ -2613,7 +2731,9 @@ export class SimulatorHarness {
       return false;
     }
     this.pauseSimulation();
-    const result = this.runtime.unequipSlot(slot);
+    const result = this.runtime.unequipSlot(slot, {
+      heroId: this.activeGearHeroId,
+    });
     if (
       result.success ||
       result.inventoryChanged ||
@@ -2647,12 +2767,13 @@ export class SimulatorHarness {
     }
 
     const slotKey = definition.slot as EquippedSlotKey;
-    const baselineLoadout = this.cloneLoadout();
-    const baselineHero = this.createHeroClone(baselineLoadout) ?? this.hero;
+    const heroId = this.activeGearHeroId;
+    const baselineLoadout = this.cloneLoadout({}, heroId);
+    const baselineHero = this.createHeroClone(baselineLoadout, heroId) ?? this.hero;
     const baseRows = this.buildStatRows(baselineHero);
 
-    const loadout = this.cloneLoadout({ [slotKey]: ownedSource });
-    const previewHero = this.createHeroClone(loadout);
+    const loadout = this.cloneLoadout({ [slotKey]: ownedSource }, heroId);
+    const previewHero = this.createHeroClone(loadout, heroId);
     if (!previewHero) {
       return null;
     }

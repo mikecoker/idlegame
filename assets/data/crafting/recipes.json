@@ -4,57 +4,63 @@
       "id": "rusty-sword",
       "result": "rusty-sword",
       "type": "equipment",
-      "tier": "small",
+      "tier": "starter",
       "cost": {
-        "iron-ore": 5
+        "iron-ore": 12,
+        "weapon-essence": 2
       }
     },
     {
       "id": "leather-cap",
       "result": "leather-cap",
       "type": "equipment",
-      "tier": "small",
+      "tier": "starter",
       "cost": {
-        "leather": 4
+        "leather": 10,
+        "armor-essence": 1
       }
     },
     {
       "id": "leather-vest",
       "result": "leather-vest",
       "type": "equipment",
-      "tier": "small",
+      "tier": "starter",
       "cost": {
-        "leather": 6,
-        "iron-ore": 2
+        "leather": 14,
+        "iron-ore": 6,
+        "armor-essence": 2
       }
     },
     {
       "id": "steel-sword",
       "result": "steel-sword",
       "type": "equipment",
-      "tier": "medium",
+      "tier": "veteran",
       "cost": {
-        "iron-ore": 14,
-        "enchanted-ore": 2
+        "iron-ore": 18,
+        "enchanted-ore": 4,
+        "weapon-essence": 4
       }
     },
     {
       "id": "chain-helm",
       "result": "chain-helm",
       "type": "equipment",
-      "tier": "medium",
+      "tier": "veteran",
       "cost": {
-        "iron-ore": 8,
-        "enchanted-ore": 2
+        "enchanted-ore": 4,
+        "armor-essence": 4,
+        "iron-ore": 8
       }
     },
     {
       "id": "chain-mail",
       "result": "chain-mail",
       "type": "equipment",
-      "tier": "medium",
+      "tier": "veteran",
       "cost": {
-        "iron-ore": 12,
+        "enchanted-ore": 6,
+        "armor-essence": 5,
         "ancient-cloth": 2
       }
     },
@@ -62,50 +68,52 @@
       "id": "dragonslayer-sword",
       "result": "dragonslayer-sword",
       "type": "equipment",
-      "tier": "boss",
+      "tier": "mythic",
       "cost": {
-        "enchanted-ore": 6,
-        "mana-crystal": 3
+        "enchanted-ore": 8,
+        "weapon-essence": 6,
+        "mana-crystal": 4
       }
     },
     {
       "id": "mythic-helm",
       "result": "mythic-helm",
       "type": "equipment",
-      "tier": "boss",
+      "tier": "mythic",
       "cost": {
-        "enchanted-ore": 4,
-        "ancient-cloth": 4
+        "ancient-cloth": 6,
+        "armor-essence": 6,
+        "mana-crystal": 4
       }
     },
     {
       "id": "mythic-plate",
       "result": "mythic-plate",
       "type": "equipment",
-      "tier": "boss",
+      "tier": "mythic",
       "cost": {
-        "enchanted-ore": 6,
-        "ancient-cloth": 6,
-        "mana-crystal": 2
+        "ancient-cloth": 8,
+        "armor-essence": 7,
+        "mana-crystal": 5
       }
     },
     {
       "id": "healing-potion",
       "result": "healing-potion",
       "type": "consumable",
-      "tier": "small",
+      "tier": "starter",
       "cost": {
-        "iron-ore": 2,
-        "leather": 1
+        "leather": 4,
+        "iron-ore": 2
       }
     },
     {
       "id": "greater-healing-potion",
       "result": "greater-healing-potion",
       "type": "consumable",
-      "tier": "boss",
+      "tier": "mythic",
       "cost": {
-        "ancient-cloth": 2,
+        "ancient-cloth": 3,
         "mana-crystal": 2
       }
     },
@@ -113,66 +121,66 @@
       "id": "refine-weapon-essence",
       "result": "weapon-essence",
       "type": "material",
-      "tier": "small",
-      "resultAmount": 2,
+      "tier": "starter",
+      "resultAmount": 3,
       "cost": {
-        "iron-ore": 8,
-        "leather": 2
+        "iron-ore": 10,
+        "leather": 4
       }
     },
     {
       "id": "refine-weapon-essence-advanced",
       "result": "weapon-essence",
       "type": "material",
-      "tier": "medium",
-      "resultAmount": 3,
+      "tier": "veteran",
+      "resultAmount": 4,
       "cost": {
-        "enchanted-ore": 3,
-        "iron-ore": 6
+        "enchanted-ore": 4,
+        "iron-ore": 10
       }
     },
     {
       "id": "refine-weapon-essence-master",
       "result": "weapon-essence",
       "type": "material",
-      "tier": "boss",
-      "resultAmount": 4,
+      "tier": "mythic",
+      "resultAmount": 5,
       "cost": {
         "enchanted-ore": 4,
-        "mana-crystal": 2
+        "mana-crystal": 3
       }
     },
     {
       "id": "refine-armor-essence",
       "result": "armor-essence",
       "type": "material",
-      "tier": "small",
-      "resultAmount": 2,
+      "tier": "starter",
+      "resultAmount": 3,
       "cost": {
-        "leather": 8,
-        "iron-ore": 2
+        "leather": 10,
+        "iron-ore": 4
       }
     },
     {
       "id": "refine-armor-essence-advanced",
       "result": "armor-essence",
       "type": "material",
-      "tier": "medium",
-      "resultAmount": 3,
+      "tier": "veteran",
+      "resultAmount": 4,
       "cost": {
-        "ancient-cloth": 3,
-        "enchanted-ore": 2
+        "ancient-cloth": 4,
+        "enchanted-ore": 3
       }
     },
     {
       "id": "refine-armor-essence-master",
       "result": "armor-essence",
       "type": "material",
-      "tier": "boss",
-      "resultAmount": 4,
+      "tier": "mythic",
+      "resultAmount": 5,
       "cost": {
-        "ancient-cloth": 4,
-        "mana-crystal": 2
+        "ancient-cloth": 5,
+        "mana-crystal": 3
       }
     }
   ]

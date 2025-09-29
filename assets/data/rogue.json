@@ -1,48 +1,48 @@
 {
   "baseStats": {
-    "strength": 18,
-    "agility": 28,
-    "dexterity": 26,
-    "stamina": 18,
-    "intelligence": 8,
-    "wisdom": 8,
-    "charisma": 12,
-    "defense": 45
+    "strength": 12,
+    "agility": 22,
+    "dexterity": 24,
+    "stamina": 22,
+    "intelligence": 36,
+    "wisdom": 34,
+    "charisma": 16,
+    "defense": 60
   },
   "derivedStats": {
-    "baseHitpoints": 60,
-    "baseMana": 18,
-    "attackPerStr": 2.8,
-    "accPerStr": 4.2,
-    "evaPerAgi": 4.5,
-    "dexPerCrit": 3.6,
-    "acPerDef": 1.5,
-    "hpPerStamina": 4.8,
-    "manaPerIntOrWis": 2.2,
-    "baseDodge": 14,
-    "dodgePerAgi": 0.65,
-    "baseParry": 7,
-    "parryPerDex": 0.32,
-    "baseAttackDelay": 1.6,
-    "minAttackDelay": 0.45,
+    "baseHitpoints": 110,
+    "baseMana": 90,
+    "attackPerStr": 1.8,
+    "accPerStr": 4.0,
+    "evaPerAgi": 3.2,
+    "dexPerCrit": 2.8,
+    "acPerDef": 2.0,
+    "hpPerStamina": 6.5,
+    "manaPerIntOrWis": 4.2,
+    "baseDodge": 12,
+    "dodgePerAgi": 0.45,
+    "baseParry": 6,
+    "parryPerDex": 0.35,
+    "baseAttackDelay": 1.78,
+    "minAttackDelay": 0.5,
     "attackDelayReductionPerAgi": 0.012
   },
   "progression": {
     "initialLevel": 1,
-    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
+    "xpCurve": { "coefficient": 115, "exponent": 1.5 },
     "statGrowth": {
-      "strength": { "percent": 0.04 },
-      "agility": { "percent": 0.07 },
-      "dexterity": { "percent": 0.06 },
-      "stamina": { "percent": 0.04 },
-      "intelligence": { "percent": 0.02 },
-      "wisdom": { "percent": 0.02 },
+      "strength": { "percent": 0.02 },
+      "agility": { "percent": 0.05 },
+      "dexterity": { "percent": 0.055 },
+      "stamina": { "percent": 0.05 },
+      "intelligence": { "percent": 0.09 },
+      "wisdom": { "percent": 0.08 },
       "charisma": { "percent": 0.03 },
-      "defense": { "percent": 0.03 }
+      "defense": { "percent": 0.045 }
     },
     "vitalGrowth": {
-      "hitpoints": { "percent": 0.08 },
-      "mana": { "percent": 0.04 }
+      "hitpoints": { "percent": 0.11 },
+      "mana": { "percent": 0.18 }
     },
     "evolutions": [
       {
@@ -50,20 +50,21 @@
         "requiredLevel": 10,
         "statMultiplier": 1.5,
         "essenceCost": 100,
-        "unlocks": ["fan-of-knives"]
+        "unlocks": ["arcane-barrage"]
       },
       {
         "tier": 2,
         "requiredLevel": 20,
         "statMultiplier": 1.5,
-        "essenceCost": 400
+        "essenceCost": 400,
+        "unlocks": ["aether-lash"]
       },
       {
         "tier": 3,
         "requiredLevel": 30,
         "statMultiplier": 1.5,
         "essenceCost": 900,
-        "unlocks": ["shadow-flurry"]
+        "unlocks": ["supernova"]
       },
       {
         "tier": 4,
@@ -75,23 +76,39 @@
   },
   "abilities": [
     {
-      "id": "fan-of-knives",
-      "name": "Fan of Knives",
-      "description": "Throws blades at nearby foes for 30% splash damage.",
+      "id": "arcane-barrage",
+      "name": "Arcane Barrage",
+      "description": "Channels bolts of energy that jump to three nearby foes for 60% damage (40% falloff).",
       "type": "area-damage",
       "trigger": "onAttackHit",
-      "percentOfDamage": 0.3,
+      "percentOfDamage": 0.6,
       "maxTargets": 3,
+      "falloffPercent": 0.6,
+      "cooldownSeconds": 5,
       "requiresTier": 1
     },
     {
-      "id": "shadow-flurry",
-      "name": "Shadow Flurry",
-      "description": "Storm of strikes lashes up to five enemies for 18% damage.",
+      "id": "aether-lash",
+      "name": "Aether Lash",
+      "description": "A whip of starlight lashes up to four enemies for 40% redirected damage.",
       "type": "area-damage",
       "trigger": "onAttackHit",
-      "percentOfDamage": 0.18,
+      "percentOfDamage": 0.4,
+      "maxTargets": 4,
+      "falloffPercent": 0.65,
+      "cooldownSeconds": 5,
+      "requiresTier": 2
+    },
+    {
+      "id": "supernova",
+      "name": "Supernova",
+      "description": "A collapsing star erupts, striking five foes for 60% damage with heavy falloff.",
+      "type": "area-damage",
+      "trigger": "onAttackHit",
+      "percentOfDamage": 0.6,
       "maxTargets": 5,
+      "falloffPercent": 0.5,
+      "cooldownSeconds": 8,
       "requiresTier": 3
     }
   ]

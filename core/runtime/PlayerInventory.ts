@@ -18,8 +18,11 @@ import {
   getUpgradeCost,
 } from "../items/ItemDefinition";
 
+export type EquippedSlotsSnapshot = Record<string, OwnedEquipment | null>;
+
 export interface InventorySnapshot {
-  equipped: Record<string, OwnedEquipment | null>;
+  equipped?: EquippedSlotsSnapshot;
+  equippedByHero?: Record<string, EquippedSlotsSnapshot>;
   inventory: OwnedEquipment[];
   materials: Record<string, number>;
   consumables: Record<string, number>;
@@ -29,6 +32,7 @@ export interface InventoryMutationResult {
   success: boolean;
   messages?: string[];
   heroNeedsRefresh?: boolean;
+  heroIds?: string[];
   inventoryChanged?: boolean;
   materialsChanged?: boolean;
   consumablesChanged?: boolean;
@@ -48,6 +52,7 @@ export interface ConsumableUseResult {
 }
 
 const DEFAULT_SLOTS = ["MainHand", "OffHand", "Head", "Chest"];
+const DEFAULT_HERO_ID = "__primary__";
 
 function cloneMaterials(map: Record<string, number>): Record<string, number> {
   const clone: Record<string, number> = {};
@@ -75,7 +80,7 @@ function ensureMessages(result: InventoryMutationResult | ConsumableUseResult) {
 }
 
 export class PlayerInventory {
-  protected equipped: Record<string, OwnedEquipment | null> = {};
+  protected equippedByHero: Map<string, EquippedSlotsSnapshot> = new Map();
   protected inventory: OwnedEquipment[] = [];
   protected materials: Record<string, number> = {};
   protected consumables: Record<string, number> = {};
@@ -85,13 +90,45 @@ export class PlayerInventory {
   }
 
   reset() {
-    this.equipped = {};
-    DEFAULT_SLOTS.forEach((slot) => {
-      this.equipped[slot] = null;
-    });
+    this.equippedByHero = new Map();
+    this.ensureHeroSlots(DEFAULT_HERO_ID);
     this.inventory = [];
     this.materials = {};
     this.consumables = {};
+  }
+
+  protected normalizeHeroId(heroId?: string | null): string {
+    if (heroId && heroId.trim().length) {
+      return heroId.trim();
+    }
+    return DEFAULT_HERO_ID;
+  }
+
+  protected ensureHeroSlots(heroId: string): EquippedSlotsSnapshot {
+    const existing = this.equippedByHero.get(heroId);
+    if (existing) {
+      return existing;
+    }
+    const slots: EquippedSlotsSnapshot = {};
+    DEFAULT_SLOTS.forEach((slot) => {
+      slots[slot] = null;
+    });
+    this.equippedByHero.set(heroId, slots);
+    return slots;
+  }
+
+  protected findEquippedOwner(
+    instanceId: string
+  ): { heroId: string; slot: string } | null {
+    for (const [heroId, slots] of this.equippedByHero.entries()) {
+      for (const slot of DEFAULT_SLOTS) {
+        const owned = slots[slot];
+        if (owned && owned.instanceId === instanceId) {
+          return { heroId, slot };
+        }
+      }
+    }
+    return null;
   }
 
   setSnapshot(snapshot?: InventorySnapshot | null) {
@@ -100,12 +137,26 @@ export class PlayerInventory {
       return;
     }
 
-    this.equipped = {};
-    DEFAULT_SLOTS.forEach((slot) => {
-      this.equipped[slot] = null;
-    });
-    Object.entries(snapshot.equipped ?? {}).forEach(([slot, owned]) => {
-      this.equipped[slot] = owned ? cloneOwnedEquipment(owned) : null;
+    this.equippedByHero = new Map();
+    const equippedByHero = snapshot.equippedByHero ??
+      (snapshot.equipped ? { [DEFAULT_HERO_ID]: snapshot.equipped } : {});
+
+    const entries = Object.entries(equippedByHero);
+    if (!entries.length) {
+      entries.push([DEFAULT_HERO_ID, {}]);
+    }
+
+    entries.forEach(([heroIdRaw, slots]) => {
+      const heroId = this.normalizeHeroId(heroIdRaw);
+      const heroSlots = this.ensureHeroSlots(heroId);
+      DEFAULT_SLOTS.forEach((slot) => {
+        heroSlots[slot] = null;
+      });
+      Object.entries(slots ?? {}).forEach(([slot, owned]) => {
+        if (DEFAULT_SLOTS.includes(slot)) {
+          heroSlots[slot] = owned ? cloneOwnedEquipment(owned) : null;
+        }
+      });
     });
 
     this.inventory = (snapshot.inventory ?? []).map((item) => cloneOwnedEquipment(item));
@@ -114,22 +165,46 @@ export class PlayerInventory {
   }
 
   getSnapshot(): InventorySnapshot {
+    const equippedByHero: Record<string, EquippedSlotsSnapshot> = {};
+    this.equippedByHero.forEach((slots, heroId) => {
+      const clone: EquippedSlotsSnapshot = {};
+      DEFAULT_SLOTS.forEach((slot) => {
+        const owned = slots[slot] ?? null;
+        clone[slot] = owned ? cloneOwnedEquipment(owned) : null;
+      });
+      equippedByHero[heroId] = clone;
+    });
+
+    if (!Object.keys(equippedByHero).length) {
+      const fallbackSlots = this.ensureHeroSlots(DEFAULT_HERO_ID);
+      const clone: EquippedSlotsSnapshot = {};
+      DEFAULT_SLOTS.forEach((slot) => {
+        const owned = fallbackSlots[slot] ?? null;
+        clone[slot] = owned ? cloneOwnedEquipment(owned) : null;
+      });
+      equippedByHero[DEFAULT_HERO_ID] = clone;
+    }
+
+    const legacyHeroId = Object.keys(equippedByHero)[0];
+    const legacySource = legacyHeroId ? equippedByHero[legacyHeroId] : {};
     const equipped: Record<string, OwnedEquipment | null> = {};
-    const keys = new Set([...DEFAULT_SLOTS, ...Object.keys(this.equipped)]);
-    keys.forEach((slot) => {
-      const owned = this.equipped[slot] ?? null;
+    Object.entries(legacySource ?? {}).forEach(([slot, owned]) => {
       equipped[slot] = owned ? cloneOwnedEquipment(owned) : null;
     });
+
     return {
       equipped,
+      equippedByHero,
       inventory: this.inventory.map((item) => cloneOwnedEquipment(item)),
       materials: cloneMaterials(this.materials),
       consumables: cloneMaterials(this.consumables),
     };
   }
 
-  getEquippedEntries(): Array<[string, OwnedEquipment]> {
-    return Object.entries(this.equipped)
+  getEquippedEntries(heroId?: string | null): Array<[string, OwnedEquipment]> {
+    const targetId = this.normalizeHeroId(heroId);
+    const slots = this.ensureHeroSlots(targetId);
+    return Object.entries(slots)
       .filter(([, value]) => !!value)
       .map(([slot, value]) => [slot, value!] as [string, OwnedEquipment]);
   }
@@ -139,21 +214,28 @@ export class PlayerInventory {
     if (inventoryItem) {
       return inventoryItem;
     }
-    for (const [slot, owned] of Object.entries(this.equipped)) {
-      if (owned && owned.instanceId === instanceId) {
-        return owned;
-      }
+    const owner = this.findEquippedOwner(instanceId);
+    if (owner) {
+      return this.ensureHeroSlots(owner.heroId)[owner.slot] ?? null;
     }
     return null;
   }
 
-  findEquippedSlot(instanceId: string): string | null {
-    for (const [slot, owned] of Object.entries(this.equipped)) {
-      if (owned && owned.instanceId === instanceId) {
-        return slot;
+  findEquippedSlot(instanceId: string, heroId?: string | null): string | null {
+    if (heroId) {
+      const targetId = this.normalizeHeroId(heroId);
+      const slots = this.ensureHeroSlots(targetId);
+      for (const slot of DEFAULT_SLOTS) {
+        const owned = slots[slot];
+        if (owned && owned.instanceId === instanceId) {
+          return slot;
+        }
       }
+      return null;
     }
-    return null;
+
+    const owner = this.findEquippedOwner(instanceId);
+    return owner ? owner.slot : null;
   }
 
   getMaterials(): Record<string, number> {
@@ -176,38 +258,62 @@ export class PlayerInventory {
     this.inventory = items.map((item) => cloneOwnedEquipment(item));
   }
 
-  setEquipped(equipped: Record<string, OwnedEquipment | null>) {
-    this.equipped = {};
+  setEquipped(equipped: Record<string, OwnedEquipment | null>, heroId?: string) {
+    const targetId = this.normalizeHeroId(heroId);
+    const slots = this.ensureHeroSlots(targetId);
     DEFAULT_SLOTS.forEach((slot) => {
-      this.equipped[slot] = null;
+      slots[slot] = null;
     });
     Object.entries(equipped).forEach(([slot, owned]) => {
-      this.equipped[slot] = owned ? cloneOwnedEquipment(owned) : null;
+      if (DEFAULT_SLOTS.includes(slot)) {
+        slots[slot] = owned ? cloneOwnedEquipment(owned) : null;
+      }
     });
   }
 
-  equipFromInventory(instanceId: string): InventoryMutationResult {
-    const result: InventoryMutationResult = { success: false };
+  equipFromInventory(instanceId: string, heroId?: string | null): InventoryMutationResult {
+    const targetHeroId = this.normalizeHeroId(heroId);
+    const result: InventoryMutationResult = { success: false, heroIds: [targetHeroId] };
     ensureMessages(result);
 
+    let owned: OwnedEquipment | null = null;
     const index = this.inventory.findIndex((item) => item.instanceId === instanceId);
-    if (index === -1) {
-      result.messages!.push("Item not found in inventory.");
-      return result;
+    if (index >= 0) {
+      owned = this.inventory[index];
+      this.inventory.splice(index, 1);
     }
 
-    const owned = this.inventory[index];
+    if (!owned) {
+      const owner = this.findEquippedOwner(instanceId);
+      if (!owner) {
+        result.messages!.push("Item not found in inventory.");
+        return result;
+      }
+      owned = this.ensureHeroSlots(owner.heroId)[owner.slot] ?? null;
+      if (!owned) {
+        result.messages!.push("Item data missing for equipped piece.");
+        return result;
+      }
+      if (owner.heroId === targetHeroId) {
+        result.messages!.push("Item already equipped on that hero.");
+        return result;
+      }
+      // Remove from previous hero
+      this.ensureHeroSlots(owner.heroId)[owner.slot] = null;
+      result.heroIds = Array.from(new Set([targetHeroId, owner.heroId]));
+    }
+
     const definition = this.items.getDefinitionInternal(owned.itemId);
     if (!definition?.slot) {
       result.messages!.push(`Cannot equip ${owned.itemId}.`);
+      this.inventory.push(owned);
       return result;
     }
 
     const slotName = definition.slot;
-    const previous = this.equipped[slotName] ?? null;
-
-    this.inventory.splice(index, 1);
-    this.equipped[slotName] = owned;
+    const heroSlots = this.ensureHeroSlots(targetHeroId);
+    const previous = heroSlots[slotName] ?? null;
+    heroSlots[slotName] = owned;
     if (previous) {
       this.inventory.push(previous);
     }
@@ -217,34 +323,38 @@ export class PlayerInventory {
     result.inventoryChanged = true;
     result.resetEncounter = true;
     const rarity = owned.rarity ?? "common";
+    const heroLabel = targetHeroId !== DEFAULT_HERO_ID ? ` [hero: ${targetHeroId}]` : "";
     result.messages!.push(
-      `${definition.name ?? owned.itemId} (${rarity}) equipped to ${slotName}.`
+      `${definition.name ?? owned.itemId} (${rarity}) equipped to ${slotName}${heroLabel}.`
     );
     return result;
   }
 
-  unequipSlot(slot: string): InventoryMutationResult {
-    const result: InventoryMutationResult = { success: false };
+  unequipSlot(slot: string, heroId?: string | null): InventoryMutationResult {
+    const targetHeroId = this.normalizeHeroId(heroId);
+    const result: InventoryMutationResult = { success: false, heroIds: [targetHeroId] };
     ensureMessages(result);
 
-    const owned = this.equipped[slot] ?? null;
+    const heroSlots = this.ensureHeroSlots(targetHeroId);
+    const owned = heroSlots[slot] ?? null;
     if (!owned) {
       result.messages!.push(`No item equipped in ${slot}.`);
       return result;
     }
 
-    this.equipped[slot] = null;
+    heroSlots[slot] = null;
     this.inventory.push(cloneOwnedEquipment(owned));
 
     result.success = true;
     result.heroNeedsRefresh = true;
     result.inventoryChanged = true;
     result.resetEncounter = true;
-    result.messages!.push(`${owned.itemId} unequipped from ${slot}.`);
+    const heroLabel = targetHeroId !== DEFAULT_HERO_ID ? ` [hero: ${targetHeroId}]` : "";
+    result.messages!.push(`${owned.itemId} unequipped from ${slot}${heroLabel}.`);
     return result;
   }
 
-  equipFirstMatching(itemId: string): InventoryMutationResult {
+  equipFirstMatching(itemId: string, heroId?: string | null): InventoryMutationResult {
     const owned = this.inventory.find((item) => item.itemId === itemId);
     if (!owned) {
       return {
@@ -252,7 +362,7 @@ export class PlayerInventory {
         messages: [`${itemId} not found in inventory.`],
       };
     }
-    return this.equipFromInventory(owned.instanceId);
+    return this.equipFromInventory(owned.instanceId, heroId);
   }
 
   upgradeEquipment(instanceId: string): InventoryMutationResult {
@@ -283,11 +393,14 @@ export class PlayerInventory {
     this.consumeMaterials(cost);
     owned.upgradeLevel = Math.min(owned.maxUpgradeLevel, owned.upgradeLevel + 1);
 
-    const slot = this.findEquippedSlot(instanceId);
+    const owner = this.findEquippedOwner(instanceId);
     result.success = true;
-    result.heroNeedsRefresh = !!slot;
     result.materialsChanged = true;
-    result.resetEncounter = !!slot;
+    if (owner) {
+      result.heroNeedsRefresh = true;
+      result.heroIds = [owner.heroId];
+      result.resetEncounter = true;
+    }
 
     const parts = Object.entries(cost)
       .map(([id, amount]) => `${id} x${amount}`)
@@ -364,11 +477,14 @@ export class PlayerInventory {
     this.consumables[augmentId] = Math.max(0, (this.consumables[augmentId] ?? 0) - 1);
     owned.augments.push(augmentId);
 
-    const slot = this.findEquippedSlot(instanceId);
+    const owner = this.findEquippedOwner(instanceId);
     result.success = true;
-    result.heroNeedsRefresh = !!slot;
-    result.resetEncounter = !!slot;
     result.consumablesChanged = true;
+    if (owner) {
+      result.heroNeedsRefresh = true;
+      result.heroIds = [owner.heroId];
+      result.resetEncounter = true;
+    }
     result.messages!.push(
       `${augmentDefinition.name ?? augmentId} socketed into ${owned.itemId}.`
     );

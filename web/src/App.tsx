@@ -51,6 +51,7 @@ const App = () => {
     Chest: null,
   });
   const [inventory, setInventory] = useState<OwnedEquipment[]>([]);
+  const [selectedGearHeroId, setSelectedGearHeroId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,11 +111,33 @@ const App = () => {
     []
   );
 
-  const getActionState = useCallback(
-    (instanceId: string): EquipmentActionState | null =>
-      harnessRef.current?.getEquipmentActionState(instanceId) ?? null,
-    []
-  );
+const getActionState = useCallback(
+  (instanceId: string): EquipmentActionState | null =>
+    harnessRef.current?.getEquipmentActionState(instanceId) ?? null,
+  []
+);
+
+  const gearHeroOptions = useMemo(() => {
+    if (!controls?.partySlots) {
+      return [] as Array<{ id: string; label: string }>;
+    }
+    return controls.partySlots
+      .filter((slot) => slot.heroId && slot.unlocked)
+      .map((slot) => ({
+        id: slot.heroId as string,
+        label: slot.heroLabel ?? (slot.heroId as string),
+      }));
+  }, [controls?.partySlots]);
+
+  const selectedGearHeroLabel = useMemo(() => {
+    if (selectedGearHeroId) {
+      return (
+        gearHeroOptions.find((option) => option.id === selectedGearHeroId)?.label ??
+        selectedGearHeroId
+      );
+    }
+    return gearHeroOptions[0]?.label ?? "Hero";
+  }, [gearHeroOptions, selectedGearHeroId]);
 
   const handleEquip = useCallback((instanceId: string) => {
     harnessRef.current?.equipFromInventory(instanceId);
@@ -182,6 +205,50 @@ const App = () => {
     }
     harnessRef.current?.craftMaterialRecipe(recipeId);
   }, []);
+
+  useEffect(() => {
+    const harness = harnessRef.current;
+    if (!harness || !harnessReady) {
+      return;
+    }
+    if (!gearHeroOptions.length) {
+      if (selectedGearHeroId !== null) {
+        setSelectedGearHeroId(null);
+      }
+      harness.setActiveGearHero(null);
+      return;
+    }
+    const availableIds = gearHeroOptions.map((option) => option.id);
+    let nextId = selectedGearHeroId;
+    if (!nextId || !availableIds.includes(nextId)) {
+      if (controls?.primaryHeroId && availableIds.includes(controls.primaryHeroId)) {
+        nextId = controls.primaryHeroId;
+      } else {
+        nextId = gearHeroOptions[0].id;
+      }
+      if (nextId !== selectedGearHeroId) {
+        setSelectedGearHeroId(nextId);
+      }
+    }
+    harness.setActiveGearHero(nextId);
+  }, [harnessReady, gearHeroOptions, controls?.primaryHeroId, selectedGearHeroId]);
+
+  const handleGearHeroChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    const heroId = value || null;
+    setSelectedGearHeroId(heroId);
+    harnessRef.current?.setActiveGearHero(heroId);
+  }, []);
+
+  useEffect(() => {
+    if (!harnessReady) {
+      return;
+    }
+    const activeHero = harnessRef.current?.getActiveGearHeroId() ?? null;
+    if (activeHero && activeHero !== selectedGearHeroId) {
+      setSelectedGearHeroId(activeHero);
+    }
+  }, [harnessReady, selectedGearHeroId]);
 
   const handleStart = useCallback(() => {
     harnessRef.current?.startSimulation();
@@ -353,7 +420,30 @@ const App = () => {
           </section>
           <section className="panel paperdoll-panel">
             <h2>Hero Loadout</h2>
+            <div className="loadout-selector">
+              <label className="input-field">
+                Loadout Hero
+                <select
+                  value={selectedGearHeroId ?? ""}
+                  onChange={handleGearHeroChange}
+                  disabled={!gearHeroOptions.length}
+                >
+                  {gearHeroOptions.length ? (
+                    gearHeroOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>
+                      No party heroes
+                    </option>
+                  )}
+                </select>
+              </label>
+            </div>
             <Paperdoll
+              heroLabel={selectedGearHeroLabel}
               equipped={equipped}
               resolveItem={getItemDefinition}
               stats={statsRows}
@@ -372,6 +462,7 @@ const App = () => {
             onSocket={handleSocket}
             onSalvage={handleSalvage}
             onUseConsumable={handleUseConsumable}
+            activeHeroLabel={selectedGearHeroLabel}
           />
         </main>
       ) : null}

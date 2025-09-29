@@ -23,6 +23,7 @@ interface InventoryPanelProps {
   onSocket: (instanceId: string) => void;
   onSalvage: (instanceId: string) => void;
   onUseConsumable: (itemId: string) => void;
+  activeHeroLabel?: string;
 }
 
 const InventoryPanel: FC<InventoryPanelProps> = ({
@@ -37,9 +38,13 @@ const InventoryPanel: FC<InventoryPanelProps> = ({
   onSocket,
   onSalvage,
   onUseConsumable,
+  activeHeroLabel,
 }) => (
   <section className="panel equipment-panel">
     <h2>Equipment & Inventory</h2>
+    {activeHeroLabel ? (
+      <div className="inventory-active-hero">Managing gear for {activeHeroLabel}</div>
+    ) : null}
     <div className="equipment-grid">
       <div className="equipment-column wide">
         <h3>Inventory</h3>

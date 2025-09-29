@@ -1,12 +1,12 @@
 {
   "id": "storm-sigil",
   "name": "Storm Sigil",
-  "tier": "boss",
+  "tier": "infused",
   "type": "augment",
   "augment": {
     "stats": {
-      "agility": 3,
-      "dexterity": 2
+      "agility": 6,
+      "dexterity": 4
     }
   }
 }

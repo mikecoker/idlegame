@@ -1,21 +1,25 @@
 {
   "id": "rusty-sword",
-  "name": "Rusty Sword",
-  "tier": "small",
+  "name": "Vanguard Blade",
+  "tier": "starter",
   "type": "weapon",
   "slot": "MainHand",
-  "power": 10,
+  "power": 40,
   "stats": {
-    "strength": 2,
-    "dexterity": 1
+    "strength": 6,
+    "stamina": 3
   },
   "weapon": {
-    "minDamage": 8,
-    "maxDamage": 14,
-    "delay": 2.2
+    "minDamage": 18,
+    "maxDamage": 28,
+    "delay": 1.9
   },
+  "socketSlots": 1,
+  "maxUpgradeLevel": 4,
   "upgrades": [
-    { "materials": { "weapon-essence": 2 } },
-    { "materials": { "weapon-essence": 4, "iron-ore": 6 } }
+    { "materials": { "iron-ore": 6, "weapon-essence": 1 } },
+    { "materials": { "iron-ore": 10, "weapon-essence": 2 } },
+    { "materials": { "iron-ore": 14, "weapon-essence": 3, "leather": 4 } },
+    { "materials": { "weapon-essence": 5, "armor-essence": 2 } }
   ]
 }

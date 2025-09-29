@@ -626,34 +626,46 @@ export class SimulationRuntime {
     }
 
     this.playerInventory.setSnapshot(clone);
-    this.refreshHeroLoadout();
+    this.refreshAllHeroLoadouts();
     this.emitState();
   }
 
-  equipFromInventory(instanceId: string): InventoryMutationResult {
+  equipFromInventory(
+    instanceId: string,
+    options: { heroId?: string | null } = {}
+  ): InventoryMutationResult {
     const guard = this.ensureInventoryReady();
     if (guard) {
       return this.processInventoryMutation(guard);
     }
-    const result = this.playerInventory.equipFromInventory(instanceId);
+    const heroId = this.resolveInventoryHeroId(options.heroId);
+    const result = this.playerInventory.equipFromInventory(instanceId, heroId ?? undefined);
     return this.processInventoryMutation(result);
   }
 
-  equipFirstMatching(itemId: string): InventoryMutationResult {
+  equipFirstMatching(
+    itemId: string,
+    options: { heroId?: string | null } = {}
+  ): InventoryMutationResult {
     const guard = this.ensureInventoryReady();
     if (guard) {
       return this.processInventoryMutation(guard);
     }
-    const result = this.playerInventory.equipFirstMatching(itemId);
+    const heroId = this.resolveInventoryHeroId(options.heroId);
+    const result = this.playerInventory.equipFirstMatching(itemId, heroId ?? undefined);
     return this.processInventoryMutation(result);
   }
 
-  unequipSlot(slot: string): InventoryMutationResult {
+  unequipSlot(
+    slot: string,
+    options: { heroId?: string | null } = {}
+  ): InventoryMutationResult {
     const guard = this.ensureInventoryReady();
     if (guard) {
       return this.processInventoryMutation(guard);
     }
-    const result = this.playerInventory.unequipSlot(slot);
+    const heroId = this.resolveInventoryHeroId(options.heroId);
+    const result = this.playerInventory.unequipSlot(slot, heroId ?? undefined);
     return this.processInventoryMutation(result);
   }
 
@@ -1058,6 +1070,20 @@ export class SimulationRuntime {
     this.selectedHeroId = resolvedHeroId;
   }
 
+  protected resolveInventoryHeroId(heroId?: string | null): string | null {
+    if (heroId && this.heroes.some((hero) => hero.id === heroId)) {
+      return heroId;
+    }
+    if (this.selectedHeroId && this.heroes.some((hero) => hero.id === this.selectedHeroId)) {
+      return this.selectedHeroId;
+    }
+    const candidate = this.selectedHeroIds.find((id): id is string => Boolean(id));
+    if (candidate) {
+      return candidate;
+    }
+    return this.heroes[0]?.id ?? null;
+  }
+
   protected ensurePartyArrayShape() {
     if (this.selectedHeroIds.length !== this.maxPartySize) {
       const next: (string | null)[] = new Array(this.maxPartySize).fill(null);
@@ -1114,6 +1140,7 @@ export class SimulationRuntime {
         character.resetVitals();
         this.partyRoster.set(heroId, character);
       }
+      this.applyEquipmentToCharacter(heroId, character, fresh);
       nextParty.push(character);
       activeSlots.push(slot);
       activeIds.push(heroId);
@@ -1294,19 +1321,54 @@ export class SimulationRuntime {
   }
 
   protected refreshHeroLoadout(resetVitals = false) {
-    if (!this.hero) {
+    this.refreshHeroLoadoutForHero(this.selectedHeroId, resetVitals);
+  }
+
+  protected refreshAllHeroLoadouts(resetVitals = false) {
+    const heroIds = new Set<string>();
+    this.partyRoster.forEach((_, heroId) => heroIds.add(heroId));
+    this.selectedHeroIds.forEach((id) => {
+      if (id) {
+        heroIds.add(id);
+      }
+    });
+    if (!heroIds.size && this.selectedHeroId) {
+      heroIds.add(this.selectedHeroId);
+    }
+    heroIds.forEach((heroId) => this.refreshHeroLoadoutForHero(heroId, resetVitals));
+  }
+
+  protected refreshHeroLoadoutForHero(
+    heroId: string | null | undefined,
+    resetVitals = false
+  ) {
+    const targetId = this.resolveInventoryHeroId(heroId);
+    if (!targetId) {
       return;
     }
-    this.hero.clearEquipment();
-    const equipped = this.playerInventory.getEquippedEntries();
+    const partyMember = this.getPartyMemberByHeroId(targetId);
+    const character = partyMember ?? this.partyRoster.get(targetId) ?? null;
+    if (!character) {
+      return;
+    }
+    this.applyEquipmentToCharacter(targetId, character, resetVitals);
+  }
+
+  protected applyEquipmentToCharacter(
+    heroId: string,
+    character: Character,
+    resetVitals = false
+  ) {
+    character.clearEquipment();
+    const equipped = this.playerInventory.getEquippedEntries(heroId);
     equipped.forEach(([, owned]) => {
       const equipment = this.itemLibrary.createEquipmentForOwned(owned);
       if (equipment) {
-        this.hero!.equipItem(equipment);
+        character.equipItem(equipment);
       }
     });
     if (resetVitals) {
-      this.hero.resetVitals();
+      character.resetVitals();
     }
   }
 
@@ -1319,7 +1381,10 @@ export class SimulationRuntime {
       result.messages.forEach((message) => this.log(`[Inventory] ${message}`));
     }
     if (result.heroNeedsRefresh) {
-      this.refreshHeroLoadout();
+      const heroIds = result.heroIds && result.heroIds.length
+        ? result.heroIds
+        : [this.resolveInventoryHeroId()].filter((value): value is string => Boolean(value));
+      heroIds.forEach((heroId) => this.refreshHeroLoadoutForHero(heroId, false));
     }
     if (result.resetEncounter) {
       this.resetEncounter(false, false);

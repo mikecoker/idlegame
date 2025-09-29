@@ -1,20 +1,23 @@
 {
   "id": "leather-cap",
-  "name": "Leather Cap",
-  "tier": "small",
+  "name": "Pathfinder Cowl",
+  "tier": "starter",
   "type": "armor",
   "slot": "Head",
-  "power": 9,
   "stats": {
-    "defense": 4,
-    "agility": 1
+    "stamina": 4,
+    "agility": 3,
+    "defense": 12
   },
   "armor": {
-    "armor": 8
+    "armor": 22
   },
   "socketSlots": 1,
+  "maxUpgradeLevel": 4,
   "upgrades": [
-    { "materials": { "armor-essence": 2 } },
-    { "materials": { "armor-essence": 3, "leather": 4 } }
+    { "materials": { "leather": 6, "armor-essence": 1 } },
+    { "materials": { "leather": 10, "armor-essence": 2 } },
+    { "materials": { "leather": 12, "iron-ore": 6, "armor-essence": 3 } },
+    { "materials": { "armor-essence": 5, "weapon-essence": 2 } }
   ]
 }

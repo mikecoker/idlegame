@@ -2,38 +2,59 @@
   "stages": [
     {
       "index": 0,
-      "label": "Town",
-      "healing": 0.5,
+      "label": "Town Workshop",
+      "healing": 0.6,
       "materials": {},
-      "recipes": ["rusty-sword", "leather-cap", "leather-vest", "healing-potion"]
+      "recipes": [
+        "rusty-sword",
+        "leather-cap",
+        "leather-vest",
+        "healing-potion",
+        "refine-weapon-essence",
+        "refine-armor-essence"
+      ]
     },
     {
       "index": 1,
-      "label": "Camp",
-      "healing": 0.4,
-      "materials": {},
-      "recipes": ["steel-sword", "chain-helm", "chain-mail", "healing-potion"]
+      "label": "Frontier Forge",
+      "healing": 0.45,
+      "materials": { "iron-ore": 8 },
+      "recipes": [
+        "steel-sword",
+        "chain-helm",
+        "chain-mail",
+        "healing-potion",
+        "refine-weapon-essence-advanced",
+        "refine-armor-essence-advanced"
+      ]
     },
     {
       "index": 2,
-      "label": "Forge",
-      "healing": 0.3,
-      "materials": {"enchanted-ore": 2},
-      "recipes": ["steel-sword", "chain-helm", "chain-mail", "greater-healing-potion"]
+      "label": "Arcane Atelier",
+      "healing": 0.35,
+      "materials": { "enchanted-ore": 4 },
+      "recipes": [
+        "steel-sword",
+        "chain-helm",
+        "chain-mail",
+        "greater-healing-potion",
+        "refine-weapon-essence-advanced",
+        "refine-armor-essence-advanced"
+      ]
     },
     {
       "index": 3,
-      "label": "Sanctum",
-      "healing": 0.5,
-      "materials": {"mana-crystal": 1},
-      "recipes": ["dragonslayer-sword", "mythic-helm", "mythic-plate", "greater-healing-potion"]
-    },
-    {
-      "index": 4,
-      "label": "Citadel",
-      "healing": 0.5,
-      "materials": {"ancient-cloth": 2},
-      "recipes": ["dragonslayer-sword", "mythic-helm", "mythic-plate", "greater-healing-potion"]
+      "label": "Mythic Crucible",
+      "healing": 0.35,
+      "materials": { "ancient-cloth": 4, "mana-crystal": 2 },
+      "recipes": [
+        "dragonslayer-sword",
+        "mythic-helm",
+        "mythic-plate",
+        "greater-healing-potion",
+        "refine-weapon-essence-master",
+        "refine-armor-essence-master"
+      ]
     }
   ]
 }

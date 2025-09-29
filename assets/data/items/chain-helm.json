@@ -1,36 +1,24 @@
 {
   "id": "chain-helm",
-  "name": "Chain Coif",
-  "tier": "medium",
+  "name": "Guardian Visor",
+  "tier": "veteran",
   "type": "armor",
   "slot": "Head",
-  "power": 18,
   "stats": {
-    "defense": 8,
-    "strength": 1
+    "stamina": 8,
+    "defense": 24,
+    "wisdom": 3
   },
   "armor": {
-    "armor": 16
+    "armor": 48
   },
-  "socketSlots": 1,
+  "socketSlots": 2,
+  "maxUpgradeLevel": 5,
   "upgrades": [
-    {
-      "materials": {
-        "armor-essence": 3,
-        "enchanted-ore": 2
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 5,
-        "ancient-cloth": 3
-      }
-    },
-    {
-      "materials": {
-        "armor-essence": 7,
-        "mana-crystal": 2
-      }
-    }
+    { "materials": { "enchanted-ore": 2, "armor-essence": 3 } },
+    { "materials": { "enchanted-ore": 3, "armor-essence": 4, "iron-ore": 10 } },
+    { "materials": { "enchanted-ore": 4, "armor-essence": 5, "mana-crystal": 1 } },
+    { "materials": { "armor-essence": 6, "mana-crystal": 1, "weapon-essence": 3 } },
+    { "materials": { "armor-essence": 8, "mana-crystal": 2 } }
   ]
 }

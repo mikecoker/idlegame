@@ -1,20 +1,23 @@
 {
   "id": "leather-vest",
-  "name": "Leather Vest",
-  "tier": "small",
+  "name": "Pathfinder Vest",
+  "tier": "starter",
   "type": "armor",
   "slot": "Chest",
-  "power": 10,
   "stats": {
-    "defense": 6,
-    "stamina": 2
+    "stamina": 6,
+    "strength": 3,
+    "defense": 18
   },
   "armor": {
-    "armor": 12
+    "armor": 36
   },
   "socketSlots": 1,
+  "maxUpgradeLevel": 4,
   "upgrades": [
-    { "materials": { "armor-essence": 3 } },
-    { "materials": { "armor-essence": 4, "leather": 6 } }
+    { "materials": { "leather": 8, "iron-ore": 4, "armor-essence": 1 } },
+    { "materials": { "leather": 12, "iron-ore": 8, "armor-essence": 2 } },
+    { "materials": { "leather": 14, "weapon-essence": 2, "armor-essence": 3 } },
+    { "materials": { "armor-essence": 6, "weapon-essence": 3 } }
   ]
 }

@@ -1,40 +1,41 @@
 {
   "id": "starter",
-  "name": "Starter Rewards",
-  "xpPerWin": 25,
+  "name": "Frontier Spoils",
+  "xpPerWin": 45,
   "gold": {
-    "min": 3,
-    "max": 10
+    "min": 12,
+    "max": 22
   },
   "materialDrops": [
-    { "id": "iron-ore", "chance": 0.4, "min": 1, "max": 3 },
-    { "id": "leather", "chance": 0.5, "min": 1, "max": 2 },
-    { "id": "weapon-essence", "chance": 0.1, "min": 1, "max": 1 }
+    { "id": "iron-ore", "chance": 0.75, "min": 2, "max": 5 },
+    { "id": "leather", "chance": 0.65, "min": 2, "max": 4 },
+    { "id": "weapon-essence", "chance": 0.28, "min": 1, "max": 2 },
+    { "id": "armor-essence", "chance": 0.25, "min": 1, "max": 2 }
   ],
   "equipmentDrops": [
     {
       "itemId": "rusty-sword",
-      "chance": 0.25,
+      "chance": 0.35,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.85, "uncommon": 0.15 }
+      "rarityWeights": { "common": 0.6, "uncommon": 0.3, "rare": 0.1 }
     },
     {
       "itemId": "leather-cap",
-      "chance": 0.2,
+      "chance": 0.32,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.8, "uncommon": 0.2 }
+      "rarityWeights": { "common": 0.62, "uncommon": 0.28, "rare": 0.1 }
     },
     {
       "itemId": "leather-vest",
-      "chance": 0.2,
+      "chance": 0.32,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.8, "uncommon": 0.2 }
+      "rarityWeights": { "common": 0.6, "uncommon": 0.3, "rare": 0.1 }
     }
   ],
   "augmentDrops": [
-    { "augmentId": "ember-gem", "chance": 0.1, "min": 1, "max": 1 }
+    { "augmentId": "ember-gem", "chance": 0.14, "min": 1, "max": 1 }
   ]
 }

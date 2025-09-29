@@ -1,48 +1,48 @@
 {
   "baseStats": {
-    "strength": 10,
-    "agility": 12,
-    "dexterity": 10,
-    "stamina": 24,
-    "intelligence": 18,
-    "wisdom": 22,
-    "charisma": 14,
-    "defense": 40
+    "strength": 16,
+    "agility": 14,
+    "dexterity": 18,
+    "stamina": 28,
+    "intelligence": 32,
+    "wisdom": 38,
+    "charisma": 20,
+    "defense": 72
   },
   "derivedStats": {
-    "baseHitpoints": 70,
-    "baseMana": 40,
+    "baseHitpoints": 135,
+    "baseMana": 95,
     "attackPerStr": 2.2,
-    "accPerStr": 3.2,
-    "evaPerAgi": 2.8,
-    "dexPerCrit": 2.4,
-    "acPerDef": 1.8,
-    "hpPerStamina": 5.5,
-    "manaPerIntOrWis": 3.5,
-    "baseDodge": 10,
-    "dodgePerAgi": 0.5,
-    "baseParry": 4,
-    "parryPerDex": 0.25,
-    "baseAttackDelay": 1.9,
+    "accPerStr": 3.0,
+    "evaPerAgi": 2.6,
+    "dexPerCrit": 2.3,
+    "acPerDef": 2.4,
+    "hpPerStamina": 8.8,
+    "manaPerIntOrWis": 4.0,
+    "baseDodge": 8,
+    "dodgePerAgi": 0.32,
+    "baseParry": 9,
+    "parryPerDex": 0.3,
+    "baseAttackDelay": 1.92,
     "minAttackDelay": 0.6,
-    "attackDelayReductionPerAgi": 0.01
+    "attackDelayReductionPerAgi": 0.009
   },
   "progression": {
     "initialLevel": 1,
-    "xpCurve": { "coefficient": 100, "exponent": 1.5 },
+    "xpCurve": { "coefficient": 110, "exponent": 1.5 },
     "statGrowth": {
       "strength": { "percent": 0.03 },
-      "agility": { "percent": 0.04 },
-      "dexterity": { "percent": 0.03 },
-      "stamina": { "percent": 0.05 },
-      "intelligence": { "percent": 0.06 },
-      "wisdom": { "percent": 0.07 },
-      "charisma": { "percent": 0.04 },
-      "defense": { "percent": 0.04 }
+      "agility": { "percent": 0.035 },
+      "dexterity": { "percent": 0.04 },
+      "stamina": { "percent": 0.07 },
+      "intelligence": { "percent": 0.07 },
+      "wisdom": { "percent": 0.09 },
+      "charisma": { "percent": 0.05 },
+      "defense": { "percent": 0.06 }
     },
     "vitalGrowth": {
-      "hitpoints": { "percent": 0.1 },
-      "mana": { "percent": 0.08 }
+      "hitpoints": { "percent": 0.14 },
+      "mana": { "percent": 0.14 }
     },
     "evolutions": [
       {
@@ -56,14 +56,15 @@
         "tier": 2,
         "requiredLevel": 20,
         "statMultiplier": 1.5,
-        "essenceCost": 400
+        "essenceCost": 400,
+        "unlocks": ["blessing-wave"]
       },
       {
         "tier": 3,
         "requiredLevel": 30,
         "statMultiplier": 1.5,
         "essenceCost": 900,
-        "unlocks": ["blessing-wave"]
+        "unlocks": ["divine-intervention"]
       },
       {
         "tier": 4,
@@ -77,22 +78,33 @@
     {
       "id": "radiant-aura",
       "name": "Radiant Aura",
-      "description": "Periodic pulses heal all allies for 3% of their maximum health.",
+      "description": "A steady glow restores 3.5% of ally health every 6 seconds.",
       "type": "healing-aura",
       "trigger": "onTick",
-      "healPercent": 0.03,
-      "intervalSeconds": 5,
+      "healPercent": 0.035,
+      "intervalSeconds": 6,
       "target": "allies",
       "requiresTier": 1
     },
     {
       "id": "blessing-wave",
       "name": "Blessing Wave",
-      "description": "Every 12 seconds a larger wave restores 6% of ally health.",
+      "description": "Waves of light surge every 14 seconds, healing allies for 8% of their maximum health.",
       "type": "healing-aura",
       "trigger": "onTick",
-      "healPercent": 0.06,
-      "intervalSeconds": 12,
+      "healPercent": 0.08,
+      "intervalSeconds": 14,
+      "target": "allies",
+      "requiresTier": 2
+    },
+    {
+      "id": "divine-intervention",
+      "name": "Divine Intervention",
+      "description": "At pivotal moments the cleric restores 18% health to the party every 20 seconds.",
+      "type": "healing-aura",
+      "trigger": "onTick",
+      "healPercent": 0.18,
+      "intervalSeconds": 20,
       "target": "allies",
       "requiresTier": 3
     }

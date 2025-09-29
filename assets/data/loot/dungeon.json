@@ -1,64 +1,65 @@
 {
   "id": "dungeon",
-  "name": "Dungeon Tier",
-  "xpPerWin": 60,
+  "name": "Deep Dungeon Hoard",
+  "xpPerWin": 130,
   "gold": {
-    "min": 12,
-    "max": 24
+    "min": 48,
+    "max": 88
   },
   "materialDrops": [
-    { "id": "enchanted-ore", "chance": 0.25, "min": 1, "max": 2 },
-    { "id": "ancient-cloth", "chance": 0.2, "min": 1, "max": 2 },
-    { "id": "mana-crystal", "chance": 0.15, "min": 1, "max": 1 },
-    { "id": "weapon-essence", "chance": 0.2, "min": 1, "max": 2 },
-    { "id": "armor-essence", "chance": 0.18, "min": 1, "max": 2 }
+    { "id": "enchanted-ore", "chance": 0.55, "min": 2, "max": 4 },
+    { "id": "ancient-cloth", "chance": 0.45, "min": 2, "max": 4 },
+    { "id": "mana-crystal", "chance": 0.3, "min": 1, "max": 2 },
+    { "id": "weapon-essence", "chance": 0.4, "min": 2, "max": 4 },
+    { "id": "armor-essence", "chance": 0.4, "min": 2, "max": 4 }
   ],
   "equipmentDrops": [
     {
       "itemId": "steel-sword",
-      "chance": 0.22,
+      "chance": 0.32,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.6, "uncommon": 0.25, "rare": 0.15 }
+      "rarityWeights": { "common": 0.36, "uncommon": 0.34, "rare": 0.2, "epic": 0.1 }
     },
     {
       "itemId": "chain-helm",
-      "chance": 0.18,
+      "chance": 0.26,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.55, "uncommon": 0.3, "rare": 0.15 }
+      "rarityWeights": { "common": 0.34, "uncommon": 0.34, "rare": 0.22, "epic": 0.1 }
     },
     {
       "itemId": "chain-mail",
-      "chance": 0.18,
+      "chance": 0.26,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "common": 0.55, "uncommon": 0.3, "rare": 0.15 }
+      "rarityWeights": { "common": 0.34, "uncommon": 0.34, "rare": 0.22, "epic": 0.1 }
     },
     {
       "itemId": "dragonslayer-sword",
-      "chance": 0.08,
+      "chance": 0.12,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "rare": 0.6, "epic": 0.3, "legendary": 0.1 }
+      "rarityWeights": { "rare": 0.45, "epic": 0.35, "legendary": 0.2 }
     },
     {
       "itemId": "mythic-helm",
-      "chance": 0.06,
+      "chance": 0.1,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "rare": 0.55, "epic": 0.35, "legendary": 0.1 }
+      "rarityWeights": { "rare": 0.4, "epic": 0.38, "legendary": 0.22 }
     },
     {
       "itemId": "mythic-plate",
-      "chance": 0.06,
+      "chance": 0.1,
       "min": 1,
       "max": 1,
-      "rarityWeights": { "rare": 0.55, "epic": 0.35, "legendary": 0.1 }
+      "rarityWeights": { "rare": 0.4, "epic": 0.38, "legendary": 0.22 }
     }
   ],
   "augmentDrops": [
-    { "augmentId": "glacial-core", "chance": 0.12, "min": 1, "max": 1 },
-    { "augmentId": "storm-sigil", "chance": 0.1, "min": 1, "max": 1 }
+    { "augmentId": "ember-gem", "chance": 0.12, "min": 1, "max": 1 },
+    { "augmentId": "glacial-core", "chance": 0.18, "min": 1, "max": 1 },
+    { "augmentId": "storm-sigil", "chance": 0.16, "min": 1, "max": 1 }
   ]
 }

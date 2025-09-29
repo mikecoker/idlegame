@@ -1,12 +1,12 @@
 {
   "id": "glacial-core",
   "name": "Glacial Core",
-  "tier": "boss",
+  "tier": "infused",
   "type": "augment",
   "augment": {
     "stats": {
-      "stamina": 3,
-      "defense": 6
+      "stamina": 6,
+      "defense": 4
     }
   }
 }
