@@ -1,11 +1,9 @@
 {
-  /* Base configuration. Do not edit this field. */
-  "extends": "./temp/tsconfig.cocos.json",
-
-  /* Add your custom configuration here. */
+  /* Custom configuration. */
   "compilerOptions": {
     "target": "ES2017",
     "strict": false,
+    "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
       "@core/*": ["core/*"],
