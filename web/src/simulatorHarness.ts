@@ -1944,7 +1944,12 @@ export class SimulatorHarness {
     }
 
     const rewards = normalizeRewards(summary.rewards);
-    this.lastRewards = normalizeRewards(summary.rewards);
+    // In arena mode, no loot drops
+    if (this.runtimeState?.stageName === "Training Arena") {
+      rewards.equipment = [];
+      rewards.augments = [];
+    }
+    this.lastRewards = normalizeRewards(rewards);
 
     this.totalRewards.xp += rewards.xp;
     this.totalRewards.gold += rewards.gold;
@@ -1957,6 +1962,12 @@ export class SimulatorHarness {
 
     this.runtime?.grantEncounterRewards(rewards);
     this.refreshInventorySnapshot();
+
+    if (this.runtimeState?.stageName === "Training Arena") {
+      // Clear last rewards for arena to avoid showing loot
+      this.lastRewards.equipment = [];
+      this.lastRewards.augments = [];
+    }
 
     if (rewards.equipment && rewards.equipment.length) {
       this.pushLog(`[Loot] Equipment: ${formatEquipmentRewards(rewards.equipment)}`);
@@ -2574,6 +2585,16 @@ export class SimulatorHarness {
 
   equipCraftedResult(itemId: string): boolean {
     return this.equipFirstMatchingItem(itemId);
+  }
+
+  startArena() {
+    this.runtime?.setArenaMode(true);
+    this.startSimulation();
+  }
+
+  stopArena() {
+    this.runtime?.setArenaMode(false);
+    this.pauseSimulation();
   }
 
   startSimulation() {

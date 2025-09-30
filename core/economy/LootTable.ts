@@ -35,6 +35,24 @@ export interface LootAugmentDrop {
   max?: number;
 }
 
+export interface LootConsumableDrop {
+  itemId: string;
+  chance: number;
+  min?: number;
+  max?: number;
+}
+
+export interface LootTableConfig {
+  id: string;
+  name?: string;
+  xpPerWin?: number;
+  gold?: LootRange;
+  materialDrops?: LootMaterialDrop[];
+  equipmentDrops?: LootEquipmentDrop[];
+  augmentDrops?: LootAugmentDrop[];
+  consumableDrops?: LootConsumableDrop[];
+}
+
 export interface LootTableRecord {
   id: string;
   label: string;

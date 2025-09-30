@@ -5,20 +5,24 @@ interface PartyPanelProps {
   slots: PartySlotControl[];
   heroOptions: ControlOption[];
   unlockedSlots: number;
+  selectedHeroId: string | null;
   onAssign(slotIndex: number, heroId: string | null): void;
   onClear(slotIndex: number): void;
   onSwap(sourceIndex: number, targetIndex: number): void;
   onPromote(slotIndex: number): void;
+  onSelectHero(heroId: string): void;
 }
 
 const PartyPanel: FC<PartyPanelProps> = ({
   slots,
   heroOptions,
   unlockedSlots,
+  selectedHeroId,
   onAssign,
   onClear,
   onSwap,
   onPromote,
+  onSelectHero,
 }) => {
   if (!slots.length) {
     return <div className="party-empty">Party layout will appear once the simulator is ready.</div>;
@@ -50,9 +54,17 @@ const PartyPanel: FC<PartyPanelProps> = ({
     if (slot.isPrimary) {
       slotClass.push("primary");
     }
+    if (slot.heroId === selectedHeroId) {
+      slotClass.push("selected");
+    }
 
     return (
-      <div key={slot.index} className={slotClass.join(" ")}>
+      <div
+        key={slot.index}
+        className={slotClass.join(" ")}
+        onClick={() => slot.heroId && onSelectHero(slot.heroId)}
+        style={{ cursor: slot.heroId ? 'pointer' : 'default' }}
+      >
         <div className="party-slot-header">
           <span>Slot {slot.index + 1}</span>
           <div className="party-slot-header-right">

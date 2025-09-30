@@ -22,11 +22,13 @@ import PartyPanel from "./components/PartyPanel";
 import InventoryPanel from "./components/InventoryPanel";
 import LogPanel from "./components/LogPanel";
 import Paperdoll from "./components/Paperdoll";
-import RewardsPanel, { RewardsRow } from "./components/RewardsPanel";
+import RewardsPanel, { RewardsRow, RewardPreview } from "./components/RewardsPanel";
 import StatusPanel from "./components/StatusPanel";
 import TabStrip, { TabKey } from "./components/TabStrip";
+import ArenaPanel from "./components/ArenaPanel";
 import TelemetryPanel from "./components/TelemetryPanel";
 import { formatAugmentList, formatEquipmentList } from "@core/utils/formatting";
+import type { StagePreview } from "@core/progression/StageGenerator";
 import "./styles/App.css";
 
 const LOG_LIMIT = 300;
@@ -315,6 +317,10 @@ const getActionState = useCallback(
     harnessRef.current?.promotePartySlot(slotIndex);
   }, []);
 
+  const handleSelectHero = useCallback((heroId: string) => {
+    setSelectedGearHeroId(heroId);
+  }, []);
+
   const handleUsePotion = useCallback((heroId: string) => {
     harnessRef.current?.useHealthPotionOnHero(heroId);
   }, []);
@@ -412,10 +418,12 @@ const getActionState = useCallback(
               slots={controls?.partySlots ?? []}
               heroOptions={controls?.heroOptions ?? []}
               unlockedSlots={controls?.unlockedPartySlots ?? 0}
+              selectedHeroId={selectedGearHeroId}
               onAssign={handlePartyAssign}
               onClear={handlePartyClear}
               onSwap={handlePartySwap}
               onPromote={handlePartyPromote}
+              onSelectHero={handleSelectHero}
             />
           </section>
           <section className="panel paperdoll-panel">
@@ -495,6 +503,14 @@ const getActionState = useCallback(
             onCraftMaterial={handleCraftMaterial}
           />
         </main>
+      ) : null}
+
+      {activeTab === "arena" ? (
+        <ArenaPanel
+          isRunning={status?.label === "Running"}
+          onStartArena={() => harnessRef.current?.startArena()}
+          onStopArena={() => harnessRef.current?.stopArena()}
+        />
       ) : null}
     </div>
   );

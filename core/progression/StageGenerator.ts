@@ -288,6 +288,56 @@ export class StageGenerator {
     return result;
   }
 
+  generateArenaStage(enemyPools: EnemyPools): StageBlueprint {
+    const waves: GeneratedWave[] = [];
+    for (let i = 0; i < 100; i++) {
+      waves.push(this.generatePopcornWave(1, enemyPools));
+    }
+    return {
+      stageNumber: 0,
+      name: "Training Arena",
+      waves,
+      lootTableId: null,
+      rewards: {
+        enemyGold: 0,
+        enemyXp: 10,
+        bossGold: 0,
+        bossShards: 0,
+        bossGemChance: 0,
+        firstClearBonusPercent: 0,
+      },
+      bossConfig: {
+        timerSeconds: 0,
+        enrageHpPercent: 0,
+        enrageAttackMultiplier: 1,
+      },
+    };
+  }
+
+  generatePopcornWave(stageNumber: number, enemyPools: EnemyPools): GeneratedWave {
+    // Generate 1-3 weak enemies for training
+    const enemyCount = Math.floor(Math.random() * 3) + 1;
+    const enemies: EnemyUnit[] = [];
+    for (let i = 0; i < enemyCount; i++) {
+      const base = this.pickEnemy("small", enemyPools, stageNumber * 13 + i) ??
+                   this.pickEnemy("medium", enemyPools, stageNumber * 11 + i);
+      if (base) {
+        const scaled = this.scaleEnemy(base, stageNumber, false);
+        // Scale down to 10% of normal
+        scaled.data.derivedStats.baseHitpoints = Math.max(1, Math.round(scaled.data.derivedStats.baseHitpoints * 0.1));
+        scaled.data.baseStats.strength = Math.max(1, Math.round(scaled.data.baseStats.strength * 0.1));
+        scaled.data.baseStats.defense = Math.max(1, Math.round(scaled.data.baseStats.defense * 0.1));
+        scaled.label = `${scaled.label} (Weak)`;
+        scaled.id = `${scaled.id}-popcorn-${i}`;
+        enemies.push(scaled);
+      }
+    }
+    return {
+      enemies,
+      isBoss: false,
+    };
+  }
+
   protected cloneData<T>(data: T): T {
     return JSON.parse(JSON.stringify(data)) as T;
   }

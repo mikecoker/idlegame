@@ -500,6 +500,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .paperdoll-stats li {
@@ -527,7 +529,6 @@ body {
   color: rgba(198, 212, 255, 0.55);
 }
 
-.content-grid > .paperdoll-panel,
 .content-grid > .equipment-panel,
 .content-grid > .crafting-panel {
   grid-column: 1 / -1;
@@ -576,9 +577,15 @@ body {
 
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: 1fr 2fr;
   gap: 20px;
   flex: 1;
+}
+
+@media (max-width: 1200px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .panel {
@@ -632,6 +639,11 @@ body {
 .party-slot.primary {
   border-color: rgba(255, 196, 99, 0.7);
   box-shadow: 0 0 0 1px rgba(255, 196, 99, 0.2);
+}
+
+.party-slot.selected {
+  border-color: rgba(74, 109, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(74, 109, 255, 0.3);
 }
 
 .party-slot.locked {

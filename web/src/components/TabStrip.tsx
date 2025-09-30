@@ -1,6 +1,6 @@
 import type { FC } from "react";
 
-type TabKey = "hero" | "crafting" | "dungeon";
+type TabKey = "hero" | "crafting" | "dungeon" | "arena";
 
 interface TabStripProps {
   active: TabKey;
@@ -11,6 +11,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "hero", label: "Hero & Inventory" },
   { key: "crafting", label: "Crafting" },
   { key: "dungeon", label: "Dungeon Sim" },
+  { key: "arena", label: "Training Arena" },
 ];
 
 const TabStrip: FC<TabStripProps> = ({ active, onChange }) => (

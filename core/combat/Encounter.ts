@@ -1,6 +1,7 @@
 import { CombatSim, AttackOutcome } from "./CombatSim";
 import { Character } from "../characters/Character";
 import { ItemRarity } from "../items/Item";
+import { LootConsumableDrop } from "../economy/LootTable";
 import {
   AbilityDefinition,
   AreaDamageAbility,
@@ -58,6 +59,7 @@ export interface EncounterRewardConfig {
   materialDrops?: Array<{ id: string; chance: number; min: number; max: number }>;
   equipmentDrops?: LootEquipmentDrop[];
   augmentDrops?: LootAugmentDrop[];
+  consumableDrops?: LootConsumableDrop[];
 }
 
 export interface EncounterRewards {
@@ -66,6 +68,7 @@ export interface EncounterRewards {
   materials: Record<string, number>;
   equipment: RewardEquipmentItem[];
   augments: RewardAugmentItem[];
+  consumables: Record<string, number>;
 }
 
 export interface EncounterEvent extends AttackOutcome {
@@ -118,6 +121,7 @@ export class EncounterLoop {
     materials: {},
     equipment: [],
     augments: [],
+    consumables: {},
   };
   protected _rewardsGranted = false;
 
@@ -543,6 +547,7 @@ export class EncounterLoop {
       materials: {},
       equipment: [],
       augments: [],
+      consumables: {},
     };
     if (Array.isArray(config.materialDrops)) {
       config.materialDrops.forEach((drop) => {
@@ -580,6 +585,20 @@ export class EncounterLoop {
           );
           if (qty > 0) {
             this.pushAugmentReward(rewards.augments, drop.augmentId, qty);
+          }
+        }
+      });
+    }
+
+    if (Array.isArray(config.consumableDrops)) {
+      config.consumableDrops.forEach((drop) => {
+        if (Math.random() <= drop.chance) {
+          const qty = this.randRange(
+            Math.max(1, drop.min ?? 1),
+            Math.max(1, drop.max ?? drop.min ?? 1)
+          );
+          if (qty > 0) {
+            rewards.consumables[drop.itemId] = (rewards.consumables[drop.itemId] ?? 0) + qty;
           }
         }
       });

@@ -10,6 +10,7 @@ import { GameDataSource, HeroDefinition } from "../data/DataSource";
 import {
   DEFAULT_LOOT_TABLE_ID,
   LootAugmentDrop,
+  LootConsumableDrop,
   LootEquipmentDrop,
   LootMaterialDrop,
   LootRange,
@@ -148,9 +149,15 @@ export class SimulationRuntime {
 
   protected clearedStages: Set<number> = new Set();
   protected highestStageCleared = 0;
+  protected isArenaMode = false;
   protected permanentStatMultiplier = 1;
   protected appliedProgressionMultiplier = 1;
   protected gemRewardPool = ["ember-gem", "glacial-core", "storm-sigil"];
+
+  protected autoHealThreshold = 0.3; // 30% HP
+  protected autoHealCooldownSeconds = 600; // 10 minutes
+  protected lastAutoHealTime = 0;
+  protected totalElapsedSeconds = 0;
 
   protected tickIntervalSeconds: number;
   protected autoStart: boolean;
@@ -273,6 +280,21 @@ export class SimulationRuntime {
       partySummary: this.getPartySummary(),
       enemyRoster: this.enemyRoster.map((entry) => ({ ...entry })),
     };
+  }
+
+  setArenaMode(enabled: boolean) {
+    if (this.isArenaMode === enabled) {
+      return;
+    }
+    this.isArenaMode = enabled;
+    if (enabled) {
+      this.log("Entering Training Arena mode. Endless weak enemies for XP grinding.");
+      this.resetEncounterInternal();
+    } else {
+      this.log("Exiting Training Arena mode.");
+      this.resetEncounterInternal();
+    }
+    this.emitState();
   }
 
   listHeroes(): HeroDefinition[] {
@@ -873,6 +895,9 @@ export class SimulationRuntime {
     if (events.length && this.hooks.onEncounterEvents) {
       this.hooks.onEncounterEvents(events);
     }
+
+    this.totalElapsedSeconds += deltaSeconds;
+    this.processAutoHeal();
 
     if (this.encounter.isComplete && !this.announcedResult) {
       const summary = this.encounter.getSummary();
@@ -1515,6 +1540,7 @@ export class SimulationRuntime {
       materialDrops: this.cloneDrops(table.materialDrops),
       equipmentDrops: this.cloneEquipmentDrops(table.equipmentDrops),
       augmentDrops: this.cloneAugmentDrops(table.augmentDrops),
+      consumableDrops: this.cloneConsumableDrops(table.consumableDrops),
     };
   }
 
@@ -1553,9 +1579,21 @@ export class SimulationRuntime {
     }));
   }
 
+  protected cloneConsumableDrops(source?: LootConsumableDrop[]) {
+    return source?.map((drop) => ({
+      itemId: drop.itemId,
+      chance: drop.chance,
+      min: drop.min,
+      max: drop.max,
+    }));
+  }
+
   protected getStageBlueprint(stageNumber: number): StageBlueprint | null {
     if (!this.stageGenerator) {
       return null;
+    }
+    if (this.isArenaMode) {
+      return this.stageGenerator.generateArenaStage(this.enemyPools);
     }
     const heroLevel = this.getHeroReferenceLevel();
     const cacheKey = this.getStageCacheKey(stageNumber, heroLevel);
@@ -1716,6 +1754,12 @@ export class SimulationRuntime {
       }
     });
 
+    const consumables: Record<string, number> = { ...(target.consumables ?? {}) };
+    Object.entries(bonus.consumables ?? {}).forEach(([id, qty]) => {
+      consumables[id] = (consumables[id] ?? 0) + qty;
+    });
+    target.consumables = consumables;
+
     return target;
   }
 
@@ -1726,6 +1770,7 @@ export class SimulationRuntime {
       materials: {},
       equipment: [],
       augments: [],
+      consumables: {},
     };
   }
 
@@ -1767,6 +1812,13 @@ export class SimulationRuntime {
       max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
     }));
 
+    const consumableDrops = table.consumableDrops?.map((drop) => ({
+      itemId: drop.itemId,
+      chance: this.clamp01(drop.chance ?? 0),
+      min: drop.min !== undefined ? Math.max(0, Math.floor(drop.min)) : undefined,
+      max: drop.max !== undefined ? Math.max(0, Math.floor(drop.max)) : undefined,
+    }));
+
     return {
       id: table.id ?? DEFAULT_LOOT_TABLE_ID,
       name: table.name,
@@ -1775,6 +1827,7 @@ export class SimulationRuntime {
       materialDrops,
       equipmentDrops,
       augmentDrops,
+      consumableDrops,
     };
   }
 
@@ -1795,6 +1848,44 @@ export class SimulationRuntime {
     if (this.hooks.onLog) {
       this.hooks.onLog(message);
     }
+  }
+
+  protected processAutoHeal() {
+    if (this.isArenaMode) {
+      return; // No auto-heal in arena mode
+    }
+    const timeSinceLastHeal = this.totalElapsedSeconds - this.lastAutoHealTime;
+    if (timeSinceLastHeal < this.autoHealCooldownSeconds) {
+      return;
+    }
+
+    for (const member of this.party) {
+      if (!member.isAlive) {
+        continue;
+      }
+      const hpRatio = member.maxHealth > 0 ? member.health / member.maxHealth : 1;
+      if (hpRatio <= this.autoHealThreshold) {
+        // Try to use a healing potion
+        const heroId = this.getHeroIdForCharacter(member);
+        if (heroId) {
+          const result = this.useConsumableItem("healing-potion", { targetHeroId: heroId });
+          if (result.success) {
+            this.lastAutoHealTime = this.totalElapsedSeconds;
+            this.log(`[Auto-Heal] Used healing potion on ${this.getHeroLabel(member)} (HP: ${(hpRatio * 100).toFixed(1)}%)`);
+            break; // Only heal one hero per tick
+          }
+        }
+      }
+    }
+  }
+
+  protected getHeroIdForCharacter(character: Character): string | null {
+    for (const [heroId, instance] of this.partyRoster.entries()) {
+      if (instance === character) {
+        return heroId;
+      }
+    }
+    return null;
   }
 
   protected emitState() {
