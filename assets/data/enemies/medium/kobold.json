@@ -1,5 +1,6 @@
 {
   "id": "kobold",
+  "label": "Kobold",
   "tier": "medium",
   "baseStats": {
     "strength": 12,

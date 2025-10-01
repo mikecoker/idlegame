@@ -1,0 +1,16 @@
+{
+  "id": "iron-helm",
+  "name": "Iron Helm",
+  "type": "armor",
+  "slot": "Head",
+  "rarity": "uncommon",
+  "stats": {
+    "stamina": 6,
+    "defense": 12
+  },
+  "armor": {
+    "armor": 15
+  },
+  "maxUpgradeLevel": 10,
+  "socketSlots": 1
+}

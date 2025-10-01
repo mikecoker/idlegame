@@ -1,0 +1,19 @@
+{
+  "id": "gold-sword",
+  "name": "Golden Sword",
+  "type": "weapon",
+  "slot": "MainHand",
+  "rarity": "rare",
+  "stats": {
+    "strength": 12,
+    "dexterity": 6,
+    "charisma": 4
+  },
+  "weapon": {
+    "minDamage": 18,
+    "maxDamage": 28,
+    "delay": 1.9
+  },
+  "maxUpgradeLevel": 15,
+  "socketSlots": 2
+}

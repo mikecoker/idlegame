@@ -22,6 +22,7 @@ interface InventoryPanelProps {
   onUpgrade: (instanceId: string) => void;
   onSocket: (instanceId: string) => void;
   onSalvage: (instanceId: string) => void;
+  onSalvageAll: () => void;
   onUseConsumable: (itemId: string) => void;
   activeHeroLabel?: string;
 }
@@ -37,6 +38,7 @@ const InventoryPanel: FC<InventoryPanelProps> = ({
   onUpgrade,
   onSocket,
   onSalvage,
+  onSalvageAll,
   onUseConsumable,
   activeHeroLabel,
 }) => (
@@ -47,7 +49,21 @@ const InventoryPanel: FC<InventoryPanelProps> = ({
     ) : null}
     <div className="equipment-grid">
       <div className="equipment-column wide">
-        <h3>Inventory</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3>Inventory</h3>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to salvage all items in inventory? This cannot be undone.')) {
+                onSalvageAll();
+              }
+            }}
+            disabled={!harnessReady || inventory.length === 0}
+            style={{ background: 'red', color: 'white' }}
+          >
+            Salvage All
+          </button>
+        </div>
         <table>
           <thead>
             <tr>
@@ -75,10 +91,10 @@ const InventoryPanel: FC<InventoryPanelProps> = ({
 
                 return (
                   <tr key={owned.instanceId}>
-                    <td>
-                      <div className="item-cell">
-                        <div className="item-name">{definition?.name ?? owned.itemId}</div>
-                        <div className="item-meta">{formatOwnedSummary(owned, definition)}</div>
+                     <td>
+                       <div className="item-cell">
+                         <div className={`item-name rarity-${owned.rarity}`}>{definition?.name ?? owned.itemId}</div>
+                         <div className="item-meta">{formatOwnedSummary(owned, definition)}</div>
                         {owned.augments.length ? (
                           <div className="item-meta">
                             Augments: {formatAugmentNames(owned.augments, resolveItem)}

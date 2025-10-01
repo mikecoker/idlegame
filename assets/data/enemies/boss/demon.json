@@ -1,0 +1,33 @@
+{
+  "id": "demon",
+  "label": "Infernal Demon",
+  "tier": "boss",
+  "baseStats": {
+    "strength": 35,
+    "agility": 18,
+    "dexterity": 20,
+    "stamina": 40,
+    "intelligence": 25,
+    "wisdom": 20,
+    "charisma": 15,
+    "defense": 90
+  },
+  "derivedStats": {
+    "baseHitpoints": 400,
+    "baseMana": 150,
+    "attackPerStr": 4.8,
+    "accPerStr": 3.2,
+    "evaPerAgi": 1.8,
+    "dexPerCrit": 2.8,
+    "acPerDef": 2.5,
+    "hpPerStamina": 8.5,
+    "manaPerIntOrWis": 5,
+    "baseDodge": 9,
+    "dodgePerAgi": 0.5,
+    "baseParry": 8,
+    "parryPerDex": 0.35,
+    "baseAttackDelay": 2.0,
+    "minAttackDelay": 0.9,
+    "attackDelayReductionPerAgi": 0.012
+  }
+}

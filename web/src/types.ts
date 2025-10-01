@@ -44,7 +44,7 @@ export interface CraftingRecipe {
   resultAmount?: number;
 }
 
-export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
+export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest" | "Boot" | "Hand";
 
 export interface OwnedEquipment {
   instanceId: string;

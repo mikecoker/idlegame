@@ -1,0 +1,16 @@
+{
+  "id": "iron-plate",
+  "name": "Iron Plate",
+  "type": "armor",
+  "slot": "Chest",
+  "rarity": "uncommon",
+  "stats": {
+    "stamina": 10,
+    "defense": 20
+  },
+  "armor": {
+    "armor": 25
+  },
+  "maxUpgradeLevel": 10,
+  "socketSlots": 1
+}

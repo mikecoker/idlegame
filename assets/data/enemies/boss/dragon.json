@@ -1,5 +1,6 @@
 {
   "id": "dragon",
+  "label": "Ancient Dragon",
   "tier": "boss",
   "baseStats": {
     "strength": 32,

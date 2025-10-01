@@ -415,6 +415,30 @@ body {
   color: #fff;
 }
 
+.slot-name.rarity-common {
+  color: #9ca3af;
+}
+
+.slot-name.rarity-uncommon {
+  color: #10b981;
+}
+
+.slot-name.rarity-rare {
+  color: #3b82f6;
+}
+
+.slot-name.rarity-epic {
+  color: #8b5cf6;
+}
+
+.slot-name.rarity-legendary {
+  color: #f97316;
+}
+
+.slot-name.rarity-mythic {
+  color: #ef4444;
+}
+
 .slot-summary,
 .slot-augments {
   font-size: 0.75rem;
@@ -842,6 +866,30 @@ body {
 .item-name {
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.item-name.rarity-common {
+  color: #9ca3af;
+}
+
+.item-name.rarity-uncommon {
+  color: #10b981;
+}
+
+.item-name.rarity-rare {
+  color: #3b82f6;
+}
+
+.item-name.rarity-epic {
+  color: #8b5cf6;
+}
+
+.item-name.rarity-legendary {
+  color: #f97316;
+}
+
+.item-name.rarity-mythic {
+  color: #ef4444;
 }
 
 .item-meta {

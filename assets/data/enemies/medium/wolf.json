@@ -1,0 +1,33 @@
+{
+  "id": "wolf",
+  "label": "Dire Wolf",
+  "tier": "medium",
+  "baseStats": {
+    "strength": 13,
+    "agility": 16,
+    "dexterity": 14,
+    "stamina": 13,
+    "intelligence": 3,
+    "wisdom": 2,
+    "charisma": 2,
+    "defense": 30
+  },
+  "derivedStats": {
+    "baseHitpoints": 95,
+    "baseMana": 10,
+    "attackPerStr": 2.6,
+    "accPerStr": 2.3,
+    "evaPerAgi": 2.8,
+    "dexPerCrit": 2.4,
+    "acPerDef": 1.5,
+    "hpPerStamina": 4.5,
+    "manaPerIntOrWis": 1.2,
+    "baseDodge": 10,
+    "dodgePerAgi": 0.55,
+    "baseParry": 2,
+    "parryPerDex": 0.12,
+    "baseAttackDelay": 1.9,
+    "minAttackDelay": 0.7,
+    "attackDelayReductionPerAgi": 0.011
+  }
+}

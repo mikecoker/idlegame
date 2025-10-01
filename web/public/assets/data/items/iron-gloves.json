@@ -1,0 +1,16 @@
+{
+  "id": "iron-gloves",
+  "name": "Iron Gloves",
+  "type": "armor",
+  "slot": "Hand",
+  "rarity": "uncommon",
+  "stats": {
+    "strength": 3,
+    "defense": 6
+  },
+  "armor": {
+    "armor": 8
+  },
+  "maxUpgradeLevel": 10,
+  "socketSlots": 1
+}

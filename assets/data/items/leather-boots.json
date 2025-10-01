@@ -1,0 +1,23 @@
+{
+  "id": "leather-boots",
+  "name": "Pathfinder Boots",
+  "tier": "starter",
+  "type": "armor",
+  "slot": "Boot",
+  "stats": {
+    "stamina": 3,
+    "agility": 2,
+    "defense": 8
+  },
+  "armor": {
+    "armor": 15
+  },
+  "socketSlots": 1,
+  "maxUpgradeLevel": 4,
+  "upgrades": [
+    { "materials": { "leather": 6, "armor-essence": 1 } },
+    { "materials": { "leather": 10, "armor-essence": 2 } },
+    { "materials": { "leather": 12, "iron-ore": 6, "armor-essence": 3 } },
+    { "materials": { "armor-essence": 5, "weapon-essence": 2 } }
+  ]
+}

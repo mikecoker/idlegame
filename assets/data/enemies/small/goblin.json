@@ -1,5 +1,6 @@
 {
   "id": "goblin",
+  "label": "Goblin",
   "tier": "small",
   "baseStats": {
     "strength": 8,

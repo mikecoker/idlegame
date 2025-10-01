@@ -1,0 +1,18 @@
+{
+  "id": "iron-sword",
+  "name": "Iron Sword",
+  "type": "weapon",
+  "slot": "MainHand",
+  "rarity": "uncommon",
+  "stats": {
+    "strength": 8,
+    "dexterity": 4
+  },
+  "weapon": {
+    "minDamage": 12,
+    "maxDamage": 18,
+    "delay": 2.0
+  },
+  "maxUpgradeLevel": 10,
+  "socketSlots": 1
+}

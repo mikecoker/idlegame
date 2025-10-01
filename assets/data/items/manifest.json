@@ -13,6 +13,14 @@
     { "id": "greater-healing-potion", "path": "assets/data/items/greater-healing-potion.json" },
     { "id": "ember-gem", "path": "assets/data/items/ember-gem.json" },
     { "id": "glacial-core", "path": "assets/data/items/glacial-core.json" },
-    { "id": "storm-sigil", "path": "assets/data/items/storm-sigil.json" }
+    { "id": "storm-sigil", "path": "assets/data/items/storm-sigil.json" },
+    { "id": "iron-sword", "path": "assets/data/items/iron-sword.json" },
+    { "id": "iron-helm", "path": "assets/data/items/iron-helm.json" },
+    { "id": "iron-plate", "path": "assets/data/items/iron-plate.json" },
+    { "id": "gold-sword", "path": "assets/data/items/gold-sword.json" },
+    { "id": "iron-boots", "path": "assets/data/items/iron-boots.json" },
+    { "id": "iron-gloves", "path": "assets/data/items/iron-gloves.json" },
+    { "id": "leather-boots", "path": "assets/data/items/leather-boots.json" },
+    { "id": "leather-gloves", "path": "assets/data/items/leather-gloves.json" }
   ]
 }

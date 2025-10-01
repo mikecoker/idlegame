@@ -51,6 +51,8 @@ const App = () => {
     OffHand: null,
     Head: null,
     Chest: null,
+    Boot: null,
+    Hand: null,
   });
   const [inventory, setInventory] = useState<OwnedEquipment[]>([]);
   const [selectedGearHeroId, setSelectedGearHeroId] = useState<string | null>(null);
@@ -155,6 +157,14 @@ const getActionState = useCallback(
 
   const handleSalvage = useCallback((instanceId: string) => {
     harnessRef.current?.salvageOwnedEquipment(instanceId);
+  }, []);
+
+  const handleSalvageAll = useCallback(() => {
+    harnessRef.current?.salvageAllInventory();
+  }, []);
+
+  const handleEquipBest = useCallback(() => {
+    harnessRef.current?.equipBestGear();
   }, []);
 
   const handleUseConsumable = useCallback((itemId: string) => {
@@ -455,23 +465,28 @@ const getActionState = useCallback(
               equipped={equipped}
               resolveItem={getItemDefinition}
               stats={statsRows}
+              getActionState={getActionState}
               onUnequip={handleUnequipSlot}
+              onUpgrade={handleUpgrade}
+              onSocket={handleSocket}
+              onEquipBest={handleEquipBest}
             />
           </section>
-          <InventoryPanel
-            inventory={inventory}
-            materials={materials}
-            harnessReady={harnessReady}
-            resolveItem={getItemDefinition}
-            getActionState={getActionState}
-            getPreview={getEquipPreview}
-            onEquip={handleEquip}
-            onUpgrade={handleUpgrade}
-            onSocket={handleSocket}
-            onSalvage={handleSalvage}
-            onUseConsumable={handleUseConsumable}
-            activeHeroLabel={selectedGearHeroLabel}
-          />
+           <InventoryPanel
+             inventory={inventory}
+             materials={materials}
+             harnessReady={harnessReady}
+             resolveItem={getItemDefinition}
+             getActionState={getActionState}
+             getPreview={getEquipPreview}
+             onEquip={handleEquip}
+             onUpgrade={handleUpgrade}
+             onSocket={handleSocket}
+             onSalvage={handleSalvage}
+             onSalvageAll={handleSalvageAll}
+             onUseConsumable={handleUseConsumable}
+             activeHeroLabel={selectedGearHeroLabel}
+           />
         </main>
       ) : null}
 

@@ -1,0 +1,33 @@
+{
+  "id": "imp",
+  "label": "Fire Imp",
+  "tier": "small",
+  "baseStats": {
+    "strength": 7,
+    "agility": 12,
+    "dexterity": 11,
+    "stamina": 8,
+    "intelligence": 8,
+    "wisdom": 6,
+    "charisma": 5,
+    "defense": 16
+  },
+  "derivedStats": {
+    "baseHitpoints": 32,
+    "baseMana": 12,
+    "attackPerStr": 2,
+    "accPerStr": 2.1,
+    "evaPerAgi": 2.2,
+    "dexPerCrit": 2.3,
+    "acPerDef": 1.1,
+    "hpPerStamina": 2.8,
+    "manaPerIntOrWis": 1.5,
+    "baseDodge": 9,
+    "dodgePerAgi": 0.45,
+    "baseParry": 2,
+    "parryPerDex": 0.15,
+    "baseAttackDelay": 2.0,
+    "minAttackDelay": 0.7,
+    "attackDelayReductionPerAgi": 0.012
+  }
+}

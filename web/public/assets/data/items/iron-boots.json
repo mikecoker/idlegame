@@ -1,0 +1,16 @@
+{
+  "id": "iron-boots",
+  "name": "Iron Boots",
+  "type": "armor",
+  "slot": "Boot",
+  "rarity": "uncommon",
+  "stats": {
+    "stamina": 4,
+    "defense": 8
+  },
+  "armor": {
+    "armor": 10
+  },
+  "maxUpgradeLevel": 10,
+  "socketSlots": 1
+}

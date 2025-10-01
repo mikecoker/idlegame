@@ -38,7 +38,7 @@ import { formatAugmentRewards, formatEquipmentRewards } from "@core/utils/format
 import type { StagePreview } from "@core/progression/StageGenerator";
 import type { StageDefinition as CoreStageDefinition } from "@core/progression/Stage";
 
-export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest";
+export type EquippedSlotKey = "MainHand" | "OffHand" | "Head" | "Chest" | "Boot" | "Hand";
 export type { OwnedEquipment, CraftingRecipe, ItemDefinition };
 import { WebDataSource } from "../../platforms/web/WebDataSource";
 
@@ -316,6 +316,7 @@ function createEmptyRewards(): EncounterRewards {
     materials: {},
     equipment: [],
     augments: [],
+    consumables: {},
   };
 }
 
@@ -329,6 +330,7 @@ function normalizeRewards(raw?: EncounterRewards | null): EncounterRewards {
     materials: { ...(raw.materials ?? {}) },
     equipment: raw.equipment ? raw.equipment.map((entry) => ({ ...entry })) : [],
     augments: raw.augments ? raw.augments.map((entry) => ({ ...entry })) : [],
+    consumables: { ...(raw.consumables ?? {}) },
   };
 }
 
@@ -391,6 +393,8 @@ export class SimulatorHarness {
     OffHand: null,
     Head: null,
     Chest: null,
+    Boot: null,
+    Hand: null,
   };
   protected equippedItemsByHero: Record<
     string,
@@ -436,6 +440,8 @@ export class SimulatorHarness {
         OffHand: this.equippedItems.OffHand ? { ...this.equippedItems.OffHand, augments: [...this.equippedItems.OffHand.augments] } : null,
         Head: this.equippedItems.Head ? { ...this.equippedItems.Head, augments: [...this.equippedItems.Head.augments] } : null,
         Chest: this.equippedItems.Chest ? { ...this.equippedItems.Chest, augments: [...this.equippedItems.Chest.augments] } : null,
+        Boot: this.equippedItems.Boot ? { ...this.equippedItems.Boot, augments: [...this.equippedItems.Boot.augments] } : null,
+        Hand: this.equippedItems.Hand ? { ...this.equippedItems.Hand, augments: [...this.equippedItems.Hand.augments] } : null,
       };
       const inventorySnapshot = this.equipmentInventory.map((item) => ({
         ...item,
@@ -752,8 +758,10 @@ export class SimulatorHarness {
       }
       this.activeGearHeroId = firstHeroId;
     }
-
-    this.equippedItems = this.cloneHeroLoadout(this.activeGearHeroId);
+    if (!this.equippedItemsByHero[this.activeGearHeroId]) {
+      this.equippedItemsByHero[this.activeGearHeroId] = this.createEmptyLoadout();
+    }
+    this.equippedItems = this.equippedItemsByHero[this.activeGearHeroId];
     this.equipmentInventory = (snapshot.inventory ?? []).map((item) =>
       this.cloneOwnedEquipment(item)
     );
@@ -813,6 +821,8 @@ export class SimulatorHarness {
       OffHand: source.OffHand ? this.cloneOwnedEquipment(source.OffHand) : null,
       Head: source.Head ? this.cloneOwnedEquipment(source.Head) : null,
       Chest: source.Chest ? this.cloneOwnedEquipment(source.Chest) : null,
+      Boot: source.Boot ? this.cloneOwnedEquipment(source.Boot) : null,
+      Hand: source.Hand ? this.cloneOwnedEquipment(source.Hand) : null,
     };
 
     (Object.keys(overrides) as EquippedSlotKey[]).forEach((slot) => {
@@ -1270,6 +1280,8 @@ export class SimulatorHarness {
       OffHand: null,
       Head: null,
       Chest: null,
+      Boot: null,
+      Hand: null,
     };
   }
 
@@ -2526,7 +2538,7 @@ export class SimulatorHarness {
     const resolved = this.determineDefaultGearHeroId(heroId ?? undefined);
     this.activeGearHeroId = resolved;
     this.equippedItems = this.cloneHeroLoadout(this.activeGearHeroId);
-    this.syncInventoryView();
+    this.notifyInventory();
   }
 
   getActiveGearHeroId(): string | null {
@@ -2748,9 +2760,6 @@ export class SimulatorHarness {
   }
 
   unequipSlot(slot: EquippedSlotKey): boolean {
-    if (!this.runtime) {
-      return false;
-    }
     this.pauseSimulation();
     const result = this.runtime.unequipSlot(slot, {
       heroId: this.activeGearHeroId,
@@ -2831,6 +2840,74 @@ export class SimulatorHarness {
     const precision = magnitude >= 100 ? 0 : magnitude >= 10 ? 1 : 2;
     const formatted = scaled.toFixed(precision);
     return `${scaled >= 0 ? "+" : ""}${formatted}${isPercent ? "%" : ""}`;
+  }
+
+  equipBestGear(): boolean {
+    let changed = false;
+    const slots: EquippedSlotKey[] = ["MainHand", "OffHand", "Head", "Chest", "Boot", "Hand"];
+    for (const slot of slots) {
+      const best = this.findBestItemForSlot(slot);
+      if (best) {
+        const current = this.equippedItems[slot];
+        if (!current || this.getItemScore(current) < this.getItemScore(best)) {
+          this.equipFromInventory(best.instanceId);
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
+  private findBestItemForSlot(slot: EquippedSlotKey): OwnedEquipment | null {
+    let best: OwnedEquipment | null = null;
+    let bestScore = 0;
+    for (const item of this.equipmentInventory) {
+      const def = this.itemDefs.get(item.itemId);
+      if (def?.slot === slot) {
+        const score = this.getItemScore(item);
+        if (score > bestScore) {
+          best = item;
+          bestScore = score;
+        }
+      }
+    }
+    return best;
+  }
+
+  private getItemScore(owned: OwnedEquipment): number {
+    const def = this.itemDefs.get(owned.itemId);
+    if (!def) return 0;
+    const equipment = this.createEquipment(def, owned);
+    if (!equipment) return 0;
+    let score = 0;
+    if (equipment.stats) {
+      // Sum all stat values
+      for (const val of Object.values(equipment.stats)) {
+        if (typeof val === 'number') {
+          score += val;
+        }
+      }
+      // For weapons, add damage
+      if ('minDamage' in equipment.stats && 'maxDamage' in equipment.stats) {
+        score += (equipment.stats as any).minDamage + (equipment.stats as any).maxDamage;
+      }
+      // For armor, add armor
+      if ('armor' in equipment.stats) {
+        score += (equipment.stats as any).armor;
+      }
+    }
+    return score;
+  }
+
+  salvageAllInventory(): boolean {
+    let salvaged = false;
+    const toSalvage = [...this.equipmentInventory];
+    for (const item of toSalvage) {
+      if (this.salvageEquipment(item.instanceId)) {
+        salvaged = true;
+      }
+    }
+    return salvaged;
   }
 
   protected cloneData<T>(data: T): T {

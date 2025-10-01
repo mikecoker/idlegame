@@ -1,0 +1,33 @@
+{
+  "id": "skeleton",
+  "label": "Skeleton Warrior",
+  "tier": "small",
+  "baseStats": {
+    "strength": 10,
+    "agility": 9,
+    "dexterity": 12,
+    "stamina": 8,
+    "intelligence": 1,
+    "wisdom": 1,
+    "charisma": 1,
+    "defense": 20
+  },
+  "derivedStats": {
+    "baseHitpoints": 35,
+    "baseMana": 2,
+    "attackPerStr": 2.2,
+    "accPerStr": 2.1,
+    "evaPerAgi": 1.8,
+    "dexPerCrit": 2.5,
+    "acPerDef": 1.2,
+    "hpPerStamina": 2.5,
+    "manaPerIntOrWis": 0.5,
+    "baseDodge": 7,
+    "dodgePerAgi": 0.4,
+    "baseParry": 4,
+    "parryPerDex": 0.2,
+    "baseAttackDelay": 2.0,
+    "minAttackDelay": 0.8,
+    "attackDelayReductionPerAgi": 0.012
+  }
+}
